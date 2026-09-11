@@ -19,7 +19,14 @@ import (
 // workspaceProfile is the iTerm2 profile carrying the PR Review workgroup trigger.
 const workspaceProfile = "PR Chat"
 
-var bare *bool
+// openingPrompt is what Claude starts on, so the session lands already working
+// the PR rather than at a blank cursor.
+const openingPrompt = "/pr-cleanup"
+
+var (
+	bare   *bool
+	prompt *string
+)
 
 func main() {
 	repo := flag.String("R", "", "owner/name, defaults to the repo you are in")
@@ -27,6 +34,7 @@ func main() {
 	limit := flag.Int("n", 60, "how many to fetch")
 	plain := flag.Bool("l", false, "print the list and exit, no picker")
 	bare = flag.Bool("bare", false, "check out only, do not start the review workspace")
+	prompt = flag.String("p", openingPrompt, "what Claude starts on; empty for a blank session")
 	flag.Parse()
 
 	if *repo == "" && !inGitRepo() {
@@ -129,9 +137,15 @@ func enterWorkspace(tree string) {
 		os.Exit(1)
 	}
 
-	cmd := "claude"
+	// Start on the job, not at a blank prompt. The skill reads the brief and
+	// the diff stat that pr-start just wrote, then produces the cut list.
+	launch := "claude"
+	if *prompt != "" {
+		launch += " " + shellQuote(*prompt)
+	}
+	cmd := launch
 	if tree != "" {
-		cmd = "cd " + shellQuote(tree) + " && claude"
+		cmd = "cd " + shellQuote(tree) + " && " + launch
 	}
 
 	it2, it2err := exec.LookPath("it2")

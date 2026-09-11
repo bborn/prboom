@@ -49,7 +49,10 @@ scrollback alone.
 3. Wires the branch's push config to the real PR branch, unless it's a fork.
 4. Records the merge base and writes a brief into the worktree's git dir.
 5. Switches the session to the `PR Chat` iTerm2 profile and starts `claude`
-   there. That profile's trigger is what spawns the Diff, Cut and PR peers.
+   there on `/pr-cleanup`, so it lands already working the PR. That profile's
+   trigger is what spawns the Diff, Code Review and PR peers.
+
+`-p` changes the opening prompt. `-p ""` gives a blank session.
 
 `--bare` stops after step 4.
 
