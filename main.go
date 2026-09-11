@@ -21,7 +21,16 @@ func main() {
 	limit := flag.Int("n", 60, "how many to fetch")
 	plain := flag.Bool("l", false, "print the list and exit, no picker")
 	agent := flag.String("agent", "", "coding agent: claude, codex, gemini, grok, cursor, opencode")
+	link := flag.Bool("link-skill", false, "install the pr-walk skill into your Claude config dirs, then exit")
 	flag.Parse()
+
+	if *link {
+		if err := linkSkill(); err != nil {
+			fmt.Fprintln(os.Stderr, "prboom:", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	if *repo == "" && !inGitRepo() {
 		fmt.Fprintln(os.Stderr, "prboom: not inside a git repository (use -R owner/name)")

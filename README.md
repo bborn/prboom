@@ -75,10 +75,21 @@ of green; override with `PR_DELTA_OPTS`.
 ## Install
 
 ```
+brew install bborn/prboom/prboom
+prboom --link-skill
+```
+
+or
+
+```
 curl -fsSL https://raw.githubusercontent.com/bborn/prboom/main/install.sh | sh
 ```
 
-Prebuilt, so Go is not needed. Files land in `~/.local/share/prboom`, commands
+Either way it is prebuilt, so Go is not needed. Homebrew must not write to your
+home directory, so `--link-skill` is a separate step there; the curl script does
+it for you.
+
+The curl script is Files land in `~/.local/share/prboom`, commands
 link into `~/.local/bin`, and the skill links into every `~/.claude*` config dir
 it finds. Set `PRBOOM_PREFIX`, `PRBOOM_BIN` or `PRBOOM_VERSION` to change any of
 that. Re-running it upgrades in place.
