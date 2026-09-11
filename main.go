@@ -1,8 +1,9 @@
-// prboom: pick a pull request, then hand it to TaskYou as a review task.
+// prboom: pick a pull request and walk it one finding at a time.
 //
-// Run it inside any git repo. Arrow to a PR, press Enter, and pr-task creates
-// a TaskYou task on that PR's branch so TaskYou builds the worktree. Open the
-// task and type /pr-walk.
+// Run it inside any git repo. Arrow to a PR and press Enter: pr-open makes a
+// worktree and a tmux window with the agent beside a Shell pane, using nothing
+// but git and tmux. Press t instead to track it on the TaskYou board, which
+// gives the same two panes.
 package main
 
 import (
@@ -52,12 +53,16 @@ func main() {
 	if !ok {
 		return
 	}
+	args := []string{fmt.Sprint(m.action.PR.Number)}
+	if *repo != "" {
+		args = append(args, "-R", *repo)
+	}
 	switch m.action.Kind {
+	case "open":
+		// git + tmux only. Nothing else is required to walk a PR.
+		run("pr-open", args...)
 	case "task":
-		args := []string{fmt.Sprint(m.action.PR.Number)}
-		if *repo != "" {
-			args = append(args, "-R", *repo)
-		}
+		// Same two-pane shape, but tracked on the TaskYou board.
 		run("pr-task", args...)
 	case "diff":
 		// Read the diff without making a task of it.

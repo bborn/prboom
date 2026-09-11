@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# pr-task NUMBER [-R OWNER/REPO]
+#
+# Makes a TaskYou task for walking a PR, pinned to this machine.
+#
+# Deliberately does NOT queue it. The walkthrough is a conversation: the agent
+# has to wait for you on every finding. A queued task would run the whole thing
+# with nobody answering.
+#
+# Pinned local because the walkthrough wants your keyboard on every finding, so
+# there is nothing to gain from another machine, and pinning means no agent host
+# ever needs provisioning for this. Heavy commands inside the session still go
+# out through `on exec` as usual.
+set -euo pipefail
+export GIT_PAGER=cat PAGER=cat
+
+num="${1:-}"
+[ -z "$num" ] && { echo "usage: pr-task NUMBER [-R OWNER/REPO]" >&2; exit 2; }
+shift
+
+meta=$(gh pr view "$num" "$@" --json title,headRefName,isCrossRepository,url)
+title=$(printf '%s' "$meta" | jq -r .title)
+branch=$(printf '%s' "$meta" | jq -r .headRefName)
+url=$(printf '%s' "$meta" | jq -r .url)
+
+if [ "$(printf '%s' "$meta" | jq -r .isCrossRepository)" = "true" ]; then
+  echo "pr-task: #$num is from a fork; its branch is not on origin." >&2
+  exit 1
+fi
+
+git fetch -q origin "$branch" 2>/dev/null || true
+
+# TaskYou seeds the agent's first prompt with the title and this body, so the
+# skill invocation goes here rather than being typed every time.
+body="/pr-walk
+
+Walk this PR one finding at a time with the pr-walk skill. Load it before
+reading anything.
+
+PR: $url
+Branch: $branch"
+
+out=$(ty create "Review PR #$num: $title" --branch "$branch" --body "$body" --json)
+id=$(printf '%s' "$out" | jq -r .id)
+if [ -z "$id" ] || [ "$id" = "null" ]; then
+  echo "pr-task: could not read the new task id" >&2
+  printf '%s\n' "$out" >&2
+  exit 1
+fi
+
+ty place "$id" local >/dev/null
+
+# Status decides who owns the agent. backlog/done/archived start nothing when
+# you open the task; queued/processing hand it to the daemon, which runs it
+# unattended and would answer its own fix/ignore/skip questions. "blocked" is
+# the only status whose open path starts an executor you drive yourself, and it
+# is honest here: the task is waiting on you.
+ty status "$id" blocked >/dev/null
+
+echo "task #$id  ·  PR #$num  ·  $branch"
+echo "open it in ty, then type /pr-walk"

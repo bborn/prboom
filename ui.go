@@ -20,7 +20,7 @@ var (
 
 // Action is what the caller should run after the list exits.
 type Action struct {
-	Kind string // "task", "diff", ""
+	Kind string // "open", "task", "diff", ""
 	PR   PR
 }
 
@@ -94,6 +94,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.idx = max(0, len(m.prs)-1)
 
 		case "enter":
+			if cur, ok := m.current(); ok {
+				m.action = Action{Kind: "open", PR: cur}
+				return m, tea.Quit
+			}
+		case "t":
 			if cur, ok := m.current(); ok {
 				m.action = Action{Kind: "task", PR: cur}
 				return m, tea.Quit
@@ -192,7 +197,7 @@ func (m model) View() string {
 		b.WriteString("\n  " + dim.Render(detail) + "\n")
 	}
 
-	b.WriteString("\n  " + dim.Render("↑↓ move   ⏎ make a review task   d diff   o browser   a "+
+	b.WriteString("\n  " + dim.Render("↑↓ move   ⏎ walk it   t as a ty task   d diff   o browser   a "+
 		map[bool]string{true: "all open", false: "just mine"}[m.mine]+"   r refresh   q quit") + "\n\n")
 	return b.String()
 }

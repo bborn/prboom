@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# prdiff [BASE] [FILE...]
+#
+# PR-shaped diff rendered with delta: side-by-side, line numbers, and OSC 8
+# hyperlinks on every line number, so cmd-click lands in the editor at that
+# line via iTerm2 semantic history.
+#
+# BASE defaults to HEAD (working tree). Any other ref is treated as a PR base
+# and diffed three-dot (merge-base), which is what GitHub shows.
+set -o pipefail
+
+base="${1:-HEAD}"
+[ $# -gt 0 ] && shift
+
+root=$(git rev-parse --show-toplevel 2>/dev/null) || {
+  echo "prdiff: not inside a git repository" >&2; exit 1; }
+
+# HEAD means "whatever the Git Base Selector defaulted to", which is useless
+# for a PR whose changes are already committed. Prefer the base pr-start
+# recorded for this worktree.
+if [ "$base" = "HEAD" ] || [ -z "$base" ]; then
+  recorded="$(git -C "$root" rev-parse --path-format=absolute --git-dir)/pr-review-base"
+  [ -r "$recorded" ] && base=$(cat "$recorded")
+fi
+
+case "$base" in
+  HEAD|"")    range=("HEAD") ;;
+  *..*)       range=("$base") ;;
+  *)          range=("${base}...") ;;
+esac
+
+width=$(tput cols 2>/dev/null || echo 160)
+sbs=(--side-by-side)
+[ "$width" -lt 150 ] && sbs=()
+
+files=()
+[ $# -gt 0 ] && files=(-- "$@")
+
+git -C "$root" diff "${range[@]}" "${files[@]}" | delta \
+  --paging=always \
+  --navigate \
+  --line-numbers \
+  --hyperlinks \
+  --hyperlinks-file-link-format "file://{path}#{line}" \
+  --hunk-header-decoration-style "blue box" \
+  --width "$width" \
+  "${sbs[@]}"
