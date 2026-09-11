@@ -41,6 +41,14 @@ func main() {
 		return
 	}
 
+	// Sweep finished PRs in the background. Nobody remembers to tidy up, so
+	// this is the only way the sessions and worktrees do not accumulate. It
+	// only ever touches what pr-open made, never a TaskYou worktree, and never
+	// one with uncommitted changes.
+	if sweep, err := exec.LookPath("pr-close"); err == nil {
+		_ = exec.Command(sweep, "--stale").Start()
+	}
+
 	// No alt screen: the list renders inline and leaves the terminal as it was.
 	p := tea.NewProgram(newModel(*repo, !*all, *limit))
 	final, err := p.Run()

@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# pr-close NUMBER          close one PR's session and worktree
+# pr-close --stale         close every one whose PR is no longer open
+# pr-close --list          show what is open and what is stale
+#
+# Never removes a worktree with uncommitted work in it. Those are reported and
+# left alone, because the only thing in them is work you did by hand.
+set -uo pipefail
+
+# shellcheck source=bin/prboom-env
+. "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/prboom-env"
+
+common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || {
+  echo "pr-close: not inside a git repository" >&2; exit 1; }
+main=$(dirname "$common")
+repo=$(basename "$main")
+
+wt_for() { printf '%s/%s/pr-%s\n' "$PR_WORKTREE_ROOT" "$repo" "$1"; }
+
+dirty() {
+  local wt="$1"
+  [ -d "$wt" ] || return 1
+  [ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ]
+}
+
+close_one() {
+  local num="$1" wt
+  wt=$(wt_for "$num")
+
+  if dirty "$wt"; then
+    echo "  #$num kept: uncommitted changes in $wt"
+    return 1
+  fi
+
+  tmux kill-session -t "=pr-$num" 2>/dev/null && echo "  #$num session closed"
+  if [ -d "$wt" ]; then
+    git -C "$main" worktree remove --force "$wt" 2>/dev/null && echo "  #$num worktree removed"
+  fi
+  git -C "$main" worktree prune 2>/dev/null
+  git -C "$main" branch -D "pr/$num" >/dev/null 2>&1 && echo "  #$num branch deleted"
+  git -C "$main" update-ref -d "refs/prboom/$num" 2>/dev/null
+  return 0
+}
+
+# Every PR this repo currently has open locally: a session, a worktree, or both.
+open_numbers() {
+  { tmux ls -F '#{session_name}' 2>/dev/null | sed -n 's/^pr-\([0-9][0-9]*\)$/\1/p'
+    ls -d "$PR_WORKTREE_ROOT/$repo"/pr-* 2>/dev/null | sed -n 's|.*/pr-\([0-9][0-9]*\)$|\1|p'
+  } | sort -un
+}
+
+pr_state() { gh pr view "$1" --json state -q .state 2>/dev/null || echo UNKNOWN; }
+
+# One call for every state, so a sweep costs the same whether one PR is open
+# locally or twenty. Prints "<number> <STATE>" per line.
+all_states() {
+  gh pr list --state all --limit 300 --json number,state \
+    -q '.[] | "\(.number) \(.state)"' 2>/dev/null
+}
+
+case "${1:-}" in
+  --list)
+    n=0
+    for num in $(open_numbers); do
+      n=$((n+1))
+      state=$(pr_state "$num")
+      mark=""
+      dirty "$(wt_for "$num")" && mark=" (uncommitted changes)"
+      printf '  #%-6s %-7s%s\n' "$num" "$state" "$mark"
+    done
+    if [ "$n" = 0 ]; then echo "  nothing open"; fi
+    ;;
+  --stale)
+    nums=$(open_numbers)
+    [ -z "$nums" ] && exit 0
+    states=$(all_states)
+    closed=0
+    for num in $nums; do
+      state=$(printf '%s\n' "$states" | awk -v n="$num" '$1 == n { print $2; exit }')
+      case "$state" in
+        MERGED|CLOSED) close_one "$num" >/dev/null && closed=$((closed+1)) ;;
+      esac
+    done
+    if [ "$closed" -gt 0 ]; then
+      echo "closed $closed finished PR$([ "$closed" = 1 ] || echo s)"
+    fi
+    exit 0
+    ;;
+  "" )
+    echo "usage: pr-close NUMBER | --stale | --list" >&2; exit 2 ;;
+  *)
+    echo "closing PR #$1"
+    close_one "$1"
+    ;;
+esac

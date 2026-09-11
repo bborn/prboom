@@ -60,6 +60,9 @@ works under either because it just looks for a pane titled `Shell`.
 | `pr-task N` | the same via TaskYou, tracked on the board |
 | `pr-show FILE:LINE [CTX]` | renders one piece of code, never pages |
 | `pr-pane CMD...` | runs a command in the window's Shell pane |
+| `pr-close N` | close one: session, worktree, branch |
+| `pr-close --stale` | close every PR that has since merged or closed |
+| `pr-close --list` | what is open locally, and its PR state |
 | `prdiff [BASE] [FILE]` | the whole PR diff, standalone |
 | `skills/pr-walk` | what the agent follows |
 
@@ -77,6 +80,21 @@ make install
 
 Symlinks the binary and scripts into `~/bin` and the skill into every
 `~/.claude*` config dir, so edits in this repo are live immediately.
+
+## Cleaning up
+
+You do not have to. `prboom` sweeps on launch, in the background: any PR whose
+session or worktree is still lying around, but which has since merged or closed,
+gets its session killed and its worktree, branch and ref removed. One `gh` call
+covers every PR at once, so it costs nothing whether you have one open or twenty.
+
+A worktree with uncommitted changes is never removed. That is work you did by
+hand and nothing else knows about it.
+
+The sweep only ever sees what `pr-open` made: a session named `pr-<n>` and a
+worktree under `PR_WORKTREE_ROOT`. TaskYou's worktrees live in
+`.task-worktrees/<id>-<slug>` and its windows are named `task-<id>`, so nothing
+here can match them. Those stay TaskYou's to manage.
 
 ## Making it yours
 
