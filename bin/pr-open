@@ -79,6 +79,15 @@ fi
 gitdir=$(git -C "$wt" rev-parse --path-format=absolute --git-dir)
 printf '%s\n' "$ref" > "$gitdir/pr-review-base"
 
+# A worktree is a path mise has never seen, so its config is untrusted and every
+# command in both panes prints a warning about it. The file is the repo's own,
+# already trusted wherever the repo lives.
+if command -v mise >/dev/null 2>&1; then
+  for cfg in "$wt/mise.toml" "$wt/.mise.toml" "$wt/.config/mise/config.toml"; do
+    [ -r "$cfg" ] && mise trust "$cfg" >/dev/null 2>&1
+  done
+fi
+
 # Claude keys its history off the directory, with / and . flattened to -.
 hist="$HOME/.claude/projects/$(printf '%s' "$wt" | tr '/.' '--')"
 if [ "$resume" = 1 ] && ls "$hist"/*.jsonl >/dev/null 2>&1; then
