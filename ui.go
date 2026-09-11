@@ -13,19 +13,14 @@ var (
 	bold   = lipgloss.NewStyle().Bold(true)
 	cursor = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "33", Dark: "39"}).Bold(true)
 	errSty = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "160", Dark: "203"})
-
-	verdictStyle = map[string]lipgloss.Style{
-		VerdictStandard:   lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "28", Dark: "78"}),
-		VerdictMechanical: lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "30", Dark: "80"}),
-		VerdictHeavy:      lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "130", Dark: "214"}),
-		VerdictNeedsPlan:  lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "90", Dark: "177"}),
-		VerdictBlocked:    lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "160", Dark: "203"}),
-	}
+	red    = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "160", Dark: "203"})
+	green  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "28", Dark: "78"})
+	amber  = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "130", Dark: "214"})
 )
 
 // Action is what the caller should run after the list exits.
 type Action struct {
-	Kind string // "start", "diff", ""
+	Kind string // "task", "diff", ""
 	PR   PR
 }
 
@@ -100,7 +95,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "enter":
 			if cur, ok := m.current(); ok {
-				m.action = Action{Kind: "start", PR: cur}
+				m.action = Action{Kind: "task", PR: cur}
 				return m, tea.Quit
 			}
 		case "d":
@@ -132,6 +127,18 @@ func (m model) current() (PR, bool) {
 	return m.prs[m.idx], true
 }
 
+func checkMark(state string) string {
+	switch state {
+	case "red":
+		return red.Render("✗")
+	case "green":
+		return green.Render("✓")
+	case "pending":
+		return amber.Render("•")
+	}
+	return " "
+}
+
 func (m model) View() string {
 	scope := "review-requested"
 	if !m.mine {
@@ -149,8 +156,7 @@ func (m model) View() string {
 			dim.Render("a all open   r refresh   q quit") + "\n\n"
 	}
 
-	// Room for: cursor, verdict, number, size, files, age, author, then title.
-	titleWidth := m.width - 62
+	titleWidth := m.width - 48
 	if titleWidth < 20 {
 		titleWidth = 20
 	}
@@ -164,28 +170,29 @@ func (m model) View() string {
 			mark = cursor.Render("▸ ")
 			style = bold
 		}
-		size := fmt.Sprintf("+%d/-%d", p.Additions, p.Deletions)
-		b.WriteString(fmt.Sprintf("%s%s %s %s %s %s %s\n",
+		b.WriteString(fmt.Sprintf("%s%s %s %s %s %s\n",
 			mark,
-			verdictStyle[p.Verdict].Render(pad(p.Verdict, 10)),
+			checkMark(p.Checks),
 			style.Render(pad("#"+fmt.Sprint(p.Number), 6)),
-			dim.Render(pad(size, 12)),
-			dim.Render(pad(fmt.Sprintf("%df", p.ChangedFiles), 4)),
-			dim.Render(pad(fmt.Sprintf("%dd", p.AgeDays), 4)),
+			dim.Render(pad(fmt.Sprintf("+%d/-%d", p.Additions, p.Deletions), 13)),
+			dim.Render(pad(fmt.Sprintf("%df", p.ChangedFiles), 5)),
 			style.Render(truncate(p.Title, titleWidth)),
 		))
 	}
 
 	if cur, ok := m.current(); ok {
-		detail := fmt.Sprintf("%s · checks %s · %s → %s",
-			cur.Author.Login, cur.Checks, cur.HeadRefName, cur.BaseRefName)
-		if cur.Why != "" {
-			detail = cur.Why + " · " + detail
+		detail := fmt.Sprintf("%s · %dd ago · %s → %s",
+			cur.Author.Login, cur.AgeDays, cur.HeadRefName, cur.BaseRefName)
+		if cur.IsCrossRepository {
+			detail += " · fork"
+		}
+		if cur.IsDraft {
+			detail += " · draft"
 		}
 		b.WriteString("\n  " + dim.Render(detail) + "\n")
 	}
 
-	b.WriteString("\n  " + dim.Render("↑↓ move   ⏎ check out   d diff   o browser   a "+
+	b.WriteString("\n  " + dim.Render("↑↓ move   ⏎ make a review task   d diff   o browser   a "+
 		map[bool]string{true: "all open", false: "just mine"}[m.mine]+"   r refresh   q quit") + "\n\n")
 	return b.String()
 }
