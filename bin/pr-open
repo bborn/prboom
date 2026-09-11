@@ -97,7 +97,7 @@ printf '%s\n' "$ref" > "$gitdir/pr-review-base"
 # already trusted wherever the repo lives.
 if command -v mise >/dev/null 2>&1; then
   for cfg in "$wt/mise.toml" "$wt/.mise.toml" "$wt/.config/mise/config.toml"; do
-    [ -r "$cfg" ] && mise trust "$cfg" >/dev/null 2>&1
+    if [ -r "$cfg" ]; then mise trust "$cfg" >/dev/null 2>&1 || true; fi
   done
 fi
 

@@ -75,11 +75,16 @@ of green; override with `PR_DELTA_OPTS`.
 ## Install
 
 ```
-make install
+curl -fsSL https://raw.githubusercontent.com/bborn/prboom/main/install.sh | sh
 ```
 
-Symlinks the binary and scripts into `~/bin` and the skill into every
-`~/.claude*` config dir, so edits in this repo are live immediately.
+Prebuilt, so Go is not needed. Files land in `~/.local/share/prboom`, commands
+link into `~/.local/bin`, and the skill links into every `~/.claude*` config dir
+it finds. Set `PRBOOM_PREFIX`, `PRBOOM_BIN` or `PRBOOM_VERSION` to change any of
+that. Re-running it upgrades in place.
+
+Working on prboom itself, `make install` symlinks straight out of the checkout
+so edits are live.
 
 ## Using another agent
 
