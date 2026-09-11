@@ -1,0 +1,16 @@
+# Sourced by the prboom scripts. Not executable, not on its own a command.
+#
+# Defaults live here; ~/.config/prboom/config overrides them by setting any of
+# the same variables. That file is plain shell, so it can compute things.
+#
+#   PR_WORKTREE_ROOT  where PR worktrees go
+#   PR_AGENT          the coding agent command
+#   PR_SKILL          what the agent is told to run on open
+#   PR_DELTA_OPTS     extra flags for delta in pr-show
+
+: "${PR_WORKTREE_ROOT:=$HOME/.prboom/worktrees}"
+: "${PR_AGENT:=claude}"
+: "${PR_SKILL:=/pr-walk}"
+
+[ -r "${PRBOOM_CONFIG:-$HOME/.config/prboom/config}" ] &&
+  . "${PRBOOM_CONFIG:-$HOME/.config/prboom/config}"

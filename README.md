@@ -78,6 +78,27 @@ make install
 Symlinks the binary and scripts into `~/bin` and the skill into every
 `~/.claude*` config dir, so edits in this repo are live immediately.
 
+## Making it yours
+
+Nothing here needs editing to fit your setup. Two conventions cover it.
+
+**`~/.config/prboom/config`** is plain shell, sourced before anything runs:
+
+| | | |
+|---|---|---|
+| `PR_WORKTREE_ROOT` | where PR worktrees go | `~/.prboom/worktrees` |
+| `PR_AGENT` | the coding agent command | `claude` |
+| `PR_SKILL` | what the agent opens on | `/pr-walk` |
+| `PR_DELTA_OPTS` | extra flags for delta | none |
+
+**`~/.config/prboom/rules.md`** is prose the skill reads before it starts, and
+it wins wherever it disagrees with the skill. This is where your test command,
+your linter, and your taste in review comments go, so the skill itself stays
+generic. A repo can add `.prboom.md` at its root for project-specific rules on
+top.
+
+Neither file has to exist.
+
 ## Needs
 
 `git` and `tmux`. `gh` authenticated, and `jq`. `delta` and `bat` if you want

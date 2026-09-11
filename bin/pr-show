@@ -16,6 +16,9 @@
 # .git/pr-review-base, else origin/main, else HEAD. PR_BASE overrides.
 set -o pipefail
 
+# shellcheck source=bin/prboom-env
+. "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/prboom-env"
+
 ref="${1:-}"
 [ -z "$ref" ] && { echo "usage: pr-show FILE[:LINE] [CONTEXT]" >&2; exit 2; }
 ctx="${2:-30}"

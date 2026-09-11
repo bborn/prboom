@@ -2,30 +2,48 @@
 # pr-open NUMBER [-R OWNER/REPO]
 #
 # Opens a PR for walking, using nothing but git and tmux: a worktree for the
-# PR's branch, a tmux window with the agent on the left and a Shell pane on the
+# PR's branch, a session with the agent on the left and a Shell pane on the
 # right, and the agent started on /pr-walk.
 #
-# This is the whole dependency story. TaskYou is optional (see pr-task) and only
-# adds board tracking; it provides the same two-pane shape, which is why the
-# skill works under either.
+# Safe to run again on the same PR. Running it twice takes you back to the
+# session you left, and never resets a worktree that has work in it.
+#
+# TaskYou is optional (see pr-task) and only adds board tracking; it builds the
+# same two-pane shape, which is why the skill works under either.
 set -euo pipefail
 export GIT_PAGER=cat PAGER=cat
+
+# shellcheck source=bin/prboom-env
+. "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/prboom-env"
 
 num="${1:-}"
 [ -z "$num" ] && { echo "usage: pr-open NUMBER [-R OWNER/REPO]" >&2; exit 2; }
 shift
+
+sess="pr-$num"
+
+go_there() {
+  if [ -n "${TMUX:-}" ]; then exec tmux switch-client -t "$sess"
+  else exec tmux attach -t "$sess"; fi
+}
+
+# Already open: go back to it and touch nothing else. No fetch, no checkout,
+# no reset — you may be mid-edit in there.
+if tmux has-session -t "=$sess" 2>/dev/null; then
+  echo "→ PR #$num is already open"
+  go_there
+fi
 
 common=$(git rev-parse --path-format=absolute --git-common-dir)
 main=$(dirname "$common")
 repo=$(basename "$main")
 
 meta=$(gh pr view "$num" "$@" --json title,baseRefName,url)
-title=$(printf '%s' "$meta" | jq -r .title)
 base=$(printf '%s' "$meta" | jq -r .baseRefName)
 url=$(printf '%s' "$meta" | jq -r .url)
 
 branch="pr/$num"
-wt="${PR_WORKTREE_ROOT:-$HOME/.t3/worktrees}/$repo/pr-$num"
+wt="$PR_WORKTREE_ROOT/$repo/pr-$num"
 
 # Fetch to a ref under refs/prboom/, never straight into refs/heads/. Git
 # refuses to fetch into a branch that is checked out in any worktree, so
@@ -41,10 +59,19 @@ else
   ref="$base"
 fi
 
+resume=0
 git -C "$main" worktree prune
+
 if [ -d "$wt" ]; then
-  # -B moves the branch onto the new head even when this worktree holds it.
-  git -C "$wt" checkout -q -B "$branch" "$head"
+  resume=1
+  if [ -n "$(git -C "$wt" status --porcelain)" ]; then
+    # Uncommitted work from a previous pass. Resetting here would delete the
+    # fixes you already made, which is the opposite of reopening.
+    echo "→ PR #$num: keeping the worktree as it is, it has uncommitted changes"
+  elif [ "$(git -C "$wt" rev-parse HEAD)" != "$head" ]; then
+    git -C "$wt" checkout -q -B "$branch" "$head"
+    echo "→ PR #$num: worktree moved up to the current head"
+  fi
 else
   git -C "$main" worktree add -q -B "$branch" "$wt" "$head"
 fi
@@ -52,25 +79,31 @@ fi
 gitdir=$(git -C "$wt" rev-parse --path-format=absolute --git-dir)
 printf '%s\n' "$ref" > "$gitdir/pr-review-base"
 
-prompt="/pr-walk
+# Claude keys its history off the directory, with / and . flattened to -.
+hist="$HOME/.claude/projects/$(printf '%s' "$wt" | tr '/.' '--')"
+if [ "$resume" = 1 ] && ls "$hist"/*.jsonl >/dev/null 2>&1; then
+  agent=("$PR_AGENT" --continue)
+  echo "→ resuming the previous conversation"
+else
+  agent=("$PR_AGENT" "$PR_SKILL
 
-Walk PR #$num one finding at a time with the pr-walk skill.
-$url"
+Walk PR #$num one finding at a time.
+$url")
+fi
 
-win="pr-$num"
 shell="${SHELL:-/bin/zsh}"
 
-if [ -n "${TMUX:-}" ]; then
-  tmux new-window -n "$win" -c "$wt" claude "$prompt"
-  tmux split-window -h -t "$win.0" -c "$wt" "$shell"
-  tmux select-pane -t "$win.0" -T Agent
-  tmux select-pane -t "$win.1" -T Shell
-  tmux select-pane -t "$win.0"
-else
-  tmux new-session -d -s "$win" -c "$wt" claude "$prompt"
-  tmux split-window -h -t "$win:0.0" -c "$wt" "$shell"
-  tmux select-pane -t "$win:0.0" -T Agent
-  tmux select-pane -t "$win:0.1" -T Shell
-  tmux select-pane -t "$win:0.0"
-  exec tmux attach -t "$win"
-fi
+# Its own session, even when called from inside tmux: review sessions stay
+# separate (tmux ls lists them, detach and reattach work), and the mouse
+# setting below applies here and nowhere else.
+tmux new-session -d -s "$sess" -c "$wt" "${agent[@]}"
+tmux split-window -h -t "$sess:0.0" -c "$wt" "$shell"
+tmux select-pane -t "$sess:0.0" -T Agent
+tmux select-pane -t "$sess:0.1" -T Shell
+tmux select-pane -t "$sess:0.0"
+
+# Click a pane to focus it, wheel to scroll it. Without this you need
+# ctrl-b arrow and ctrl-b [ , which is a lot to know for a review tool.
+tmux set-option -t "$sess" mouse on
+
+go_there
