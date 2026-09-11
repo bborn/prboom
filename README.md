@@ -30,7 +30,7 @@ cheap static cues that predict review effort.
 | Key | Does |
 |---|---|
 | `↑` `↓` `j` `k` | move |
-| `⏎` | check out the PR and write its brief, via `pr-start` |
+| `⏎` | worktree the PR and drop you into a Claude review session |
 | `d` | show the PR's diff in delta, without checking it out |
 | `o` | open it on GitHub |
 | `a` | toggle between yours and every open PR |
@@ -40,9 +40,22 @@ cheap static cues that predict review effort.
 The list renders inline rather than in an alternate screen, so it leaves your
 scrollback alone.
 
+## What Enter does
+
+1. `pr-start` fetches `refs/pull/<n>/head` into a local `pr/<n>` branch.
+2. Puts a worktree for it under `~/.t3/worktrees/<repo>/pr-<n>`, alongside your
+   other agent worktrees, so `worktree-gc` ages it like the rest. Your main
+   checkout is never switched.
+3. Wires the branch's push config to the real PR branch, unless it's a fork.
+4. Records the merge base and writes a brief into the worktree's git dir.
+5. Switches the session to the `PR Chat` iTerm2 profile and starts `claude`
+   there. That profile's trigger is what spawns the Diff, Cut and PR peers.
+
+`--bare` stops after step 4.
+
 ## Needs
 
-`gh`, authenticated. `delta` for `d`. `pr-start` for `⏎`.
+`gh` authenticated, `jq`, `delta` for `d`, `pr-start` on PATH.
 
 ## Part of
 

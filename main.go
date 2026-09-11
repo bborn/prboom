@@ -10,15 +10,23 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
+	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
+
+// workspaceProfile is the iTerm2 profile carrying the PR Review workgroup trigger.
+const workspaceProfile = "PR Chat"
+
+var bare *bool
 
 func main() {
 	repo := flag.String("R", "", "owner/name, defaults to the repo you are in")
 	all := flag.Bool("a", false, "every open PR, not just ones awaiting your review")
 	limit := flag.Int("n", 60, "how many to fetch")
 	plain := flag.Bool("l", false, "print the list and exit, no picker")
+	bare = flag.Bool("bare", false, "check out only, do not start the review workspace")
 	flag.Parse()
 
 	if *repo == "" && !inGitRepo() {
@@ -54,7 +62,24 @@ func main() {
 	}
 	switch m.action.Kind {
 	case "start":
+		// pr-start builds a worktree and tells us where it put it.
+		f, err := os.CreateTemp("", "prboom-path")
+		if err == nil {
+			f.Close()
+			defer os.Remove(f.Name())
+			os.Setenv("PR_START_PATH_OUT", f.Name())
+		}
 		run("pr-start", fmt.Sprint(m.action.PR.Number))
+		if *bare {
+			return
+		}
+		tree := ""
+		if f != nil {
+			if b, err := os.ReadFile(f.Name()); err == nil {
+				tree = strings.TrimSpace(string(b))
+			}
+		}
+		enterWorkspace(tree)
 	case "diff":
 		// Show the PR's diff without checking it out, so triage stays cheap.
 		run("sh", "-c", fmt.Sprintf(
@@ -88,6 +113,63 @@ func printPlain(prs []PR) {
 		}
 	}
 	fmt.Println()
+}
+
+// enterWorkspace turns this session into the PR Review workgroup and hands it
+// to Claude. The profile carries the Enter Workgroup trigger, so switching to
+// it before claude starts is what makes the Diff, Cut and PR peers appear
+// instead of the plain Claude Code workgroup.
+//
+// It replaces this process, so prboom never returns. If anything is missing we
+// still start claude; you just get the default workgroup.
+func enterWorkspace(tree string) {
+	claude, err := exec.LookPath("claude")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "prboom: claude is not on PATH")
+		os.Exit(1)
+	}
+
+	cmd := "claude"
+	if tree != "" {
+		cmd = "cd " + shellQuote(tree) + " && claude"
+	}
+
+	it2, it2err := exec.LookPath("it2")
+	sid := sessionID()
+
+	if it2err == nil && sid != "" {
+		if err := exec.Command(it2, "profile", "apply", workspaceProfile, "-s", sid).Run(); err == nil {
+			// Queue the command on the tty so the shell runs it once we exit.
+			// A shell-launched process is what the profile's Job Started
+			// trigger watches for; exec'ing in place keeps the same pid and
+			// the trigger can miss it.
+			if err := exec.Command(it2, "session", "run", cmd, "-s", sid).Run(); err == nil {
+				return
+			}
+		}
+	}
+
+	// No iTerm2 to talk to: start claude here. You get the default workgroup.
+	if tree != "" {
+		_ = os.Chdir(tree)
+	}
+	if err := syscall.Exec(claude, []string{"claude"}, os.Environ()); err != nil {
+		fmt.Fprintln(os.Stderr, "prboom:", err)
+		os.Exit(1)
+	}
+}
+
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// sessionID is the uuid half of ITERM_SESSION_ID (w0t0p0:UUID).
+func sessionID() string {
+	v := os.Getenv("ITERM_SESSION_ID")
+	if i := strings.LastIndex(v, ":"); i >= 0 {
+		return v[i+1:]
+	}
+	return v
 }
 
 func inGitRepo() bool {
