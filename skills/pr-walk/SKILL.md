@@ -38,7 +38,16 @@ Three to five short lines. What the PR changes, in plain words, as a person
 would say it out loud. No file names. Not the title restated. Not a list of
 commits.
 
-Then one line: how many findings you have, and stop. Wait for them.
+Then one line that asks for something, so there is an obvious next keystroke:
+
+```
+4 findings. Start?
+```
+
+Not "I have 4 findings." A statement leaves them looking at a dead end and
+working out what you want. Anything they reply that is not a question means go.
+
+If there are none, say so and stop instead: `Nothing worth your time here.`
 
 ## Step 2: one finding at a time
 
