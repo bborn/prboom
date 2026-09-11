@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pr-open NUMBER [-R OWNER/REPO]
+# pr-open [--agent NAME] NUMBER [-R OWNER/REPO]
 #
 # Opens a PR for walking, using nothing but git and tmux: a worktree for the
 # PR's branch, a session with the agent on the left and a Shell pane on the
@@ -12,13 +12,26 @@
 # same two-pane shape, which is why the skill works under either.
 set -euo pipefail
 export GIT_PAGER=cat PAGER=cat
+agent=()
 
 # shellcheck source=bin/prboom-env
 . "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/prboom-env"
 
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --agent) PR_AGENT="$2"; export PR_AGENT; shift 2 ;;
+    --agent=*) PR_AGENT="${1#*=}"; export PR_AGENT; shift ;;
+    *) break ;;
+  esac
+done
+
 num="${1:-}"
-[ -z "$num" ] && { echo "usage: pr-open NUMBER [-R OWNER/REPO]" >&2; exit 2; }
+[ -z "$num" ] && { echo "usage: pr-open [--agent NAME] NUMBER [-R OWNER/REPO]" >&2; exit 2; }
 shift
+
+# Fail before making a worktree, not after.
+command -v "$PR_AGENT" >/dev/null 2>&1 || {
+  echo "pr-open: agent '$PR_AGENT' is not on PATH" >&2; exit 1; }
 
 sess="pr-$num"
 
@@ -88,16 +101,37 @@ if command -v mise >/dev/null 2>&1; then
   done
 fi
 
-# Claude keys its history off the directory, with / and . flattened to -.
-hist="$HOME/.claude/projects/$(printf '%s' "$wt" | tr '/.' '--')"
-if [ "$resume" = 1 ] && ls "$hist"/*.jsonl >/dev/null 2>&1; then
-  agent=("$PR_AGENT" --continue)
-  echo "→ resuming the previous conversation"
-else
-  agent=("$PR_AGENT" "$PR_SKILL
+# Only Claude Code has a skills directory we can install into, so it gets the
+# slash command. Everything else is handed the same skill as a file to read,
+# which needs nothing installed on the agent's side.
+if [ "$(basename "$PR_AGENT")" = "claude" ]; then
+  opening="$PR_SKILL
 
 Walk PR #$num one finding at a time.
-$url")
+$url"
+else
+  opening="Read $PR_SKILL_FILE and follow it exactly.
+
+Walk PR #$num one finding at a time.
+$url"
+fi
+
+# Resuming differs per agent, and an agent with no resume just starts again.
+if [ "$resume" = 1 ]; then
+  case "$(basename "$PR_AGENT")" in
+    claude)
+      hist="$HOME/.claude/projects/$(printf '%s' "$wt" | tr '/.' '--')"
+      if ls "$hist"/*.jsonl >/dev/null 2>&1; then
+        agent=("$PR_AGENT" --continue)
+        echo "→ resuming the previous conversation"
+      fi ;;
+    codex)
+      agent=("$PR_AGENT" resume --last)
+      echo "→ resuming the previous conversation" ;;
+  esac
+fi
+if [ "${#agent[@]}" -eq 0 ]; then
+  agent=("$PR_AGENT" "$opening")
 fi
 
 shell="${SHELL:-/bin/zsh}"

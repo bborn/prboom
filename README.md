@@ -81,6 +81,23 @@ make install
 Symlinks the binary and scripts into `~/bin` and the skill into every
 `~/.claude*` config dir, so edits in this repo are live immediately.
 
+## Using another agent
+
+```
+prboom --agent codex
+pr-open --agent codex 3653
+PR_AGENT=codex          # in ~/.config/prboom/config, to make it the default
+```
+
+Both paths take it. `pr-task` passes it to TaskYou as `--executor`, which speaks
+the same names.
+
+Only Claude Code has a skills directory to install into, so it gets `/pr-walk`
+as a slash command. Every other agent is handed the same file to read, which
+needs nothing installed on its side. Resuming a reopened PR uses `--continue`
+for claude and `resume --last` for codex; an agent with neither just starts
+again.
+
 ## Cleaning up
 
 You do not have to. `prboom` sweeps on launch, in the background: any PR whose
@@ -105,8 +122,9 @@ Nothing here needs editing to fit your setup. Two conventions cover it.
 | | | |
 |---|---|---|
 | `PR_WORKTREE_ROOT` | where PR worktrees go | `~/.prboom/worktrees` |
-| `PR_AGENT` | the coding agent command | `claude` |
-| `PR_SKILL` | what the agent opens on | `/pr-walk` |
+| `PR_AGENT` | the coding agent | `claude` |
+| `PR_SKILL` | slash command, for agents that have one | `/pr-walk` |
+| `PR_SKILL_FILE` | the skill as a file, for agents that don't | in this repo |
 | `PR_DELTA_OPTS` | extra flags for delta | none |
 
 **`~/.config/prboom/rules.md`** is prose the skill reads before it starts, and

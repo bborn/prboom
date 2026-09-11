@@ -20,6 +20,7 @@ func main() {
 	all := flag.Bool("a", false, "every open PR, not just ones awaiting your review")
 	limit := flag.Int("n", 60, "how many to fetch")
 	plain := flag.Bool("l", false, "print the list and exit, no picker")
+	agent := flag.String("agent", "", "coding agent: claude, codex, gemini, grok, cursor, opencode")
 	flag.Parse()
 
 	if *repo == "" && !inGitRepo() {
@@ -61,7 +62,11 @@ func main() {
 	if !ok {
 		return
 	}
-	args := []string{fmt.Sprint(m.action.PR.Number)}
+	args := []string{}
+	if *agent != "" {
+		args = append(args, "--agent", *agent)
+	}
+	args = append(args, fmt.Sprint(m.action.PR.Number))
 	if *repo != "" {
 		args = append(args, "-R", *repo)
 	}

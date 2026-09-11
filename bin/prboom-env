@@ -1,16 +1,24 @@
 # Sourced by the prboom scripts. Not executable, not on its own a command.
 #
+# PRBOOM_HOME is the repo this was installed from, resolved through the symlink
+# in ~/bin, so the skill file can be found without configuring a path.
+PRBOOM_HOME="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")")/.." && pwd)"
+
+#
 # Defaults live here; ~/.config/prboom/config overrides them by setting any of
 # the same variables. That file is plain shell, so it can compute things.
 #
 #   PR_WORKTREE_ROOT  where PR worktrees go
-#   PR_AGENT          the coding agent command
-#   PR_SKILL          what the agent is told to run on open
+#   PR_AGENT          the coding agent: claude, codex, gemini, grok, cursor,
+#                     opencode, or any command that takes a prompt argument
+#   PR_SKILL          the slash command for agents that have one
+#   PR_SKILL_FILE     the skill as a file, for agents that do not
 #   PR_DELTA_OPTS     extra flags for delta in pr-show
 
 : "${PR_WORKTREE_ROOT:=$HOME/.prboom/worktrees}"
 : "${PR_AGENT:=claude}"
 : "${PR_SKILL:=/pr-walk}"
+: "${PR_SKILL_FILE:=$PRBOOM_HOME/skills/pr-walk/SKILL.md}"
 
 [ -r "${PRBOOM_CONFIG:-$HOME/.config/prboom/config}" ] &&
   . "${PRBOOM_CONFIG:-$HOME/.config/prboom/config}"

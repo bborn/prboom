@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pr-task NUMBER [-R OWNER/REPO]
+# pr-task [--agent NAME] NUMBER [-R OWNER/REPO]
 #
 # Makes a TaskYou task for walking a PR, pinned to this machine.
 #
@@ -14,8 +14,19 @@
 set -euo pipefail
 export GIT_PAGER=cat PAGER=cat
 
+# shellcheck source=bin/prboom-env
+. "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/prboom-env"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --agent) PR_AGENT="$2"; shift 2 ;;
+    --agent=*) PR_AGENT="${1#*=}"; shift ;;
+    *) break ;;
+  esac
+done
+
 num="${1:-}"
-[ -z "$num" ] && { echo "usage: pr-task NUMBER [-R OWNER/REPO]" >&2; exit 2; }
+[ -z "$num" ] && { echo "usage: pr-task [--agent NAME] NUMBER [-R OWNER/REPO]" >&2; exit 2; }
 shift
 
 meta=$(gh pr view "$num" "$@" --json title,headRefName,isCrossRepository,url)
@@ -40,7 +51,9 @@ reading anything.
 PR: $url
 Branch: $branch"
 
-out=$(ty create "Review PR #$num: $title" --branch "$branch" --body "$body" --json)
+# TaskYou speaks the same agent names, so PR_AGENT carries across both paths.
+out=$(ty create "Review PR #$num: $title" --branch "$branch" --body "$body" \
+  --executor "$PR_AGENT" --json)
 id=$(printf '%s' "$out" | jq -r .id)
 if [ -z "$id" ] || [ "$id" = "null" ]; then
   echo "pr-task: could not read the new task id" >&2
