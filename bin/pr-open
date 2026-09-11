@@ -27,21 +27,26 @@ url=$(printf '%s' "$meta" | jq -r .url)
 branch="pr/$num"
 wt="${PR_WORKTREE_ROOT:-$HOME/.t3/worktrees}/$repo/pr-$num"
 
-# refs/pull/N/head resolves for forks too, unlike origin/<headRefName>.
-git -C "$main" fetch -q --force origin "refs/pull/$num/head:refs/heads/$branch"
-git -C "$main" fetch -q origin "$base" 2>/dev/null || true
+# Fetch to a ref under refs/prboom/, never straight into refs/heads/. Git
+# refuses to fetch into a branch that is checked out in any worktree, so
+# fetching into pr/<n> breaks the moment this PR has been opened once before.
+# refs/pull/N/head also resolves for forks, unlike origin/<headRefName>.
+git -C "$main" fetch -q --force origin "refs/pull/$num/head:refs/prboom/$num"
+head=$(git -C "$main" rev-parse "refs/prboom/$num")
 
+git -C "$main" fetch -q origin "$base" 2>/dev/null || true
 if git -C "$main" rev-parse --verify -q "origin/$base" >/dev/null; then
   ref="origin/$base"
 else
   ref="$base"
 fi
 
+git -C "$main" worktree prune
 if [ -d "$wt" ]; then
-  git -C "$wt" checkout -q "$branch"
-  git -C "$wt" reset -q --hard "$branch"
+  # -B moves the branch onto the new head even when this worktree holds it.
+  git -C "$wt" checkout -q -B "$branch" "$head"
 else
-  git -C "$main" worktree add -q "$wt" "$branch"
+  git -C "$main" worktree add -q -B "$branch" "$wt" "$head"
 fi
 
 gitdir=$(git -C "$wt" rev-parse --path-format=absolute --git-dir)
@@ -58,11 +63,13 @@ shell="${SHELL:-/bin/zsh}"
 if [ -n "${TMUX:-}" ]; then
   tmux new-window -n "$win" -c "$wt" claude "$prompt"
   tmux split-window -h -t "$win.0" -c "$wt" "$shell"
+  tmux select-pane -t "$win.0" -T Agent
   tmux select-pane -t "$win.1" -T Shell
   tmux select-pane -t "$win.0"
 else
   tmux new-session -d -s "$win" -c "$wt" claude "$prompt"
   tmux split-window -h -t "$win:0.0" -c "$wt" "$shell"
+  tmux select-pane -t "$win:0.0" -T Agent
   tmux select-pane -t "$win:0.1" -T Shell
   tmux select-pane -t "$win:0.0"
   exec tmux attach -t "$win"
