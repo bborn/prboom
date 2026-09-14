@@ -14,7 +14,7 @@ prboom -R owner/name
 |---|---|
 | `↑` `↓` `j` `k` | move |
 | `⏎` | walk it now: worktree + tmux window + agent |
-| `t` | same, but tracked as a TaskYou task |
+| `t` | same, but tracked as a TaskYou task, and opened in ty; reopens the task if there already is one |
 | `d` | read the diff in delta, open nothing |
 | `o` | open it on GitHub |
 | `a` | toggle between yours and every open PR |
@@ -23,6 +23,10 @@ prboom -R owner/name
 
 The picker renders inline rather than in an alternate screen, so it leaves your
 scrollback alone. It does not judge the PRs for you.
+
+A PR you are already walking is marked beside its number: `ty 5421` for an
+unfinished TaskYou review task in this repo's project, `open` for a `pr-open`
+worktree.
 
 ## The walkthrough
 

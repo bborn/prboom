@@ -71,4 +71,10 @@ ty place "$id" local >/dev/null
 ty status "$id" blocked >/dev/null
 
 echo "task #$id  ·  PR #$num  ·  $branch"
-echo "open it in ty, then type /pr-walk"
+
+# Straight into the task, which starts the walkthrough. Only with a terminal to
+# hand over; scripted callers just get the id.
+if [ -t 0 ] && [ -t 1 ]; then
+  exec ty open "$id"
+fi
+echo "open it with: ty open $id"

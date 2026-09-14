@@ -47,7 +47,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, "prboom:", err)
 			os.Exit(1)
 		}
-		printPlain(prs)
+		printPlain(prs, reviewsFor(*repo))
 		return
 	}
 
@@ -84,6 +84,11 @@ func main() {
 		// git + tmux only. Nothing else is required to walk a PR.
 		run("pr-open", args...)
 	case "task":
+		// Already on the board: go back to that task rather than make a twin.
+		if id := m.action.Review.TaskID; id != 0 {
+			run("ty", "open", fmt.Sprint(id))
+			return
+		}
 		// Same two-pane shape, but tracked on the TaskYou board.
 		run("pr-task", args...)
 	case "diff":
@@ -95,14 +100,18 @@ func main() {
 	}
 }
 
-func printPlain(prs []PR) {
+func printPlain(prs []PR, reviews map[int]Review) {
 	if len(prs) == 0 {
 		fmt.Println("nothing waiting on you.")
 		return
 	}
 	for _, p := range prs {
-		fmt.Printf("%s %-16s %-60s +%d/-%d · %df · %dd · %s\n",
-			pad("#"+fmt.Sprint(p.Number), 6), truncate(p.Author.Login, 16),
+		label := ""
+		if r, ok := reviews[p.Number]; ok {
+			label = r.Label()
+		}
+		fmt.Printf("%s %-8s %-16s %-60s +%d/-%d · %df · %dd · %s\n",
+			pad("#"+fmt.Sprint(p.Number), 6), label, truncate(p.Author.Login, 16),
 			truncate(p.Title, 60), p.Additions, p.Deletions,
 			p.ChangedFiles, p.AgeDays, p.Checks)
 	}

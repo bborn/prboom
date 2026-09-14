@@ -20,13 +20,15 @@ var (
 
 // Action is what the caller should run after the list exits.
 type Action struct {
-	Kind string // "open", "task", "diff", ""
-	PR   PR
+	Kind   string // "open", "task", "diff", ""
+	PR     PR
+	Review Review // what is already under way for PR, if anything
 }
 
 type loadedMsg struct {
-	prs []PR
-	err error
+	prs     []PR
+	reviews map[int]Review
+	err     error
 }
 
 type model struct {
@@ -36,6 +38,7 @@ type model struct {
 	width int
 
 	prs     []PR
+	reviews map[int]Review
 	idx     int
 	loading bool
 	err     error
@@ -50,9 +53,20 @@ func newModel(repo string, mine bool, limit int) model {
 func (m model) load() tea.Cmd {
 	repo, mine, limit := m.repo, m.mine, m.limit
 	return func() tea.Msg {
+		reviews := make(chan map[int]Review, 1)
+		go func() { reviews <- reviewsFor(repo) }()
 		prs, err := Fetch(repo, mine, limit)
-		return loadedMsg{prs: prs, err: err}
+		return loadedMsg{prs: prs, reviews: <-reviews, err: err}
 	}
+}
+
+// reviewsFor only looks locally when the list is for the repo you are in;
+// with -R the local worktrees and tasks belong to some other repo.
+func reviewsFor(repo string) map[int]Review {
+	if repo != "" {
+		return map[int]Review{}
+	}
+	return Reviews()
 }
 
 func (m model) Init() tea.Cmd { return m.load() }
@@ -64,7 +78,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case loadedMsg:
 		m.loading = false
-		m.prs, m.err = msg.prs, msg.err
+		m.prs, m.reviews, m.err = msg.prs, msg.reviews, msg.err
 		if m.idx >= len(m.prs) {
 			m.idx = 0
 		}
@@ -100,7 +114,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "t":
 			if cur, ok := m.current(); ok {
-				m.action = Action{Kind: "task", PR: cur}
+				m.action = Action{Kind: "task", PR: cur, Review: m.reviews[cur.Number]}
 				return m, tea.Quit
 			}
 		case "d":
@@ -161,7 +175,7 @@ func (m model) View() string {
 			dim.Render("a all open   r refresh   q quit") + "\n\n"
 	}
 
-	titleWidth := m.width - 48
+	titleWidth := m.width - 57
 	if titleWidth < 20 {
 		titleWidth = 20
 	}
@@ -175,10 +189,15 @@ func (m model) View() string {
 			mark = cursor.Render("▸ ")
 			style = bold
 		}
-		b.WriteString(fmt.Sprintf("%s%s %s %s %s %s\n",
+		reviewing := strings.Repeat(" ", 8)
+		if r, ok := m.reviews[p.Number]; ok {
+			reviewing = cursor.Render(pad(r.Label(), 8))
+		}
+		b.WriteString(fmt.Sprintf("%s%s %s %s %s %s %s\n",
 			mark,
 			checkMark(p.Checks),
 			style.Render(pad("#"+fmt.Sprint(p.Number), 6)),
+			reviewing,
 			dim.Render(pad(fmt.Sprintf("+%d/-%d", p.Additions, p.Deletions), 13)),
 			dim.Render(pad(fmt.Sprintf("%df", p.ChangedFiles), 5)),
 			style.Render(truncate(p.Title, titleWidth)),
@@ -195,6 +214,9 @@ func (m model) View() string {
 			detail += " · draft"
 		}
 		b.WriteString("\n  " + dim.Render(detail) + "\n")
+		if r, ok := m.reviews[cur.Number]; ok {
+			b.WriteString("  " + cursor.Render(r.Detail()) + "\n")
+		}
 	}
 
 	b.WriteString("\n  " + dim.Render("↑↓ move   ⏎ walk it   t as a ty task   d diff   o browser   a "+
