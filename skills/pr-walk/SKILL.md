@@ -38,14 +38,15 @@ Three to five short lines. What the PR changes, in plain words, as a person
 would say it out loud. No file names. Not the title restated. Not a list of
 commits.
 
-Then one line that asks for something, so there is an obvious next keystroke:
+Then ask for something, so there is an obvious next keystroke. Use the
+`AskUserQuestion` tool, one question, header `PR walk`:
 
-```
-4 findings. Start?
-```
+- question: `4 findings. Start?`
+- options: **Start** (walk them worst first), **Stop** (end here)
 
 Not "I have 4 findings." A statement leaves them looking at a dead end and
-working out what you want. Anything they reply that is not a question means go.
+working out what you want. Anything they type into Other that is not a question
+means go.
 
 If there are none, say so and stop instead: `Nothing worth your time here.`
 
@@ -77,12 +78,25 @@ point is one expression; more only when they need the surrounding method.
 `app/models/offer.rb:120-140`
 Nothing calls `recalculate_legacy`. It was the old path before the registry landed.
 → delete it (-21)
-
-fix · comment · next
 ```
 
+**Then** ask for the decision with the `AskUserQuestion` tool, in the same turn.
+One question, single select:
+
+- header: `3 of 5` (which finding this is; 12 characters max)
+- question: the arrow line's action, e.g. `Delete recalculate_legacy (-21)?`
+- options, in this order:
+  - **fix** — description: the concrete edit, e.g. `Delete lines 120-140 now`
+  - **comment** — description: `Leave a note for the author, no code change`
+  - **next** — description: `No change, no note`
+
 Four parts. The location. Two sentences at most, why it matters. One arrow line
-with the concrete action and the line delta. The decision row.
+with the concrete action and the line delta. The decision, as a choice they pick
+with the arrow keys rather than a word they type.
+
+Do not also print `fix · comment · next` as text. The picker is the decision
+row. Only if `AskUserQuestion` is unavailable (another harness, a
+non-interactive run) fall back to ending the message with that line.
 
 Nothing else. No preamble, no "I noticed", no restating what the file does, no
 summary of your reasoning. If they want more they will ask, and then you answer
@@ -98,10 +112,11 @@ Three words, because more than three means remembering which is which:
   not post. No code changes. Next finding.
 - **next** — no change, no note. Move on and do not raise it again.
 
-**Anything else they type is an instruction or a question, not a decision.** "do
-it but keep the guard", "why does that break?", "show me the caller" — act on
-it, answer in at most two sentences, re-show code if it helps, then re-ask the
-decision row. That path is how a bigger change than you proposed gets made, so
+**Anything they type into Other is an instruction or a question, not a
+decision.** "do it but keep the guard", "why does that break?", "show me the
+caller" — act on it, answer in at most two sentences, re-show code if it helps,
+then ask the decision again with `AskUserQuestion`. The same goes for notes they
+attach to an option: "fix" with a note is a fix done their way. That path is how a bigger change than you proposed gets made, so
 there is no separate word for it.
 
 Never move on without one of the three.
@@ -114,7 +129,8 @@ When the list is done, output:
 - the net line change: `git diff --stat "$BASE..."`
 - anything you were unsure about, max three lines
 
-Offer to post the collected comments to the PR with `gh pr comment`. Do not post
+If any comments were collected, offer to post them with `AskUserQuestion`
+(options **Post** and **Don't post**), then use `gh pr comment`. Do not post
 without being told.
 
 ## What counts as a finding
