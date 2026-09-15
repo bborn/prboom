@@ -115,7 +115,10 @@ Three words, because more than three means remembering which is which:
 **Anything they type into Other is an instruction or a question, not a
 decision.** "do it but keep the guard", "why does that break?", "show me the
 caller" — act on it, answer in at most two sentences, re-show code if it helps,
-then ask the decision again with `AskUserQuestion`. The same goes for notes they
+then ask the decision again with `AskUserQuestion`. The two-sentence cap is for
+explanations. When they ask to see something ("show me the comment", "show me
+the diff"), show all of it, then ask. Never answer a request by asking the same
+question again. The same goes for notes they
 attach to an option: "fix" with a note is a fix done their way. That path is how a bigger change than you proposed gets made, so
 there is no separate word for it.
 
@@ -129,9 +132,12 @@ When the list is done, output:
 - the net line change: `git diff --stat "$BASE..."`
 - anything you were unsure about, max three lines
 
-If any comments were collected, offer to post them with `AskUserQuestion`
-(options **Post** and **Don't post**), then use `gh pr comment`. Do not post
-without being told.
+If any comments were collected, print the exact text that would be posted, in
+full, as message text, then offer to post it with `AskUserQuestion` (options
+**Post** and **Don't post**), then use `gh pr comment`. Do not post without
+being told. A draft that only exists in a file or a tool call has not been
+shown: they cannot approve what they have not read. Every time the draft
+changes, print it again before asking again.
 
 ## What counts as a finding
 
