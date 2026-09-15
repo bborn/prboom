@@ -36,7 +36,7 @@ func (r Review) Detail() string {
 	return "reviewing: " + strings.Join(parts, " + ")
 }
 
-var reviewTitle = regexp.MustCompile(`^Review PR #(\d+):`)
+var reviewTitle = regexp.MustCompile(`^(?:Review )?PR #(\d+)\b`)
 
 // Reviews finds walkthroughs in progress for the repo you are in, keyed by PR
 // number. Scoped to that repo so another repo's PR #12 does not light up this
@@ -75,7 +75,7 @@ func localReviews(main string, out map[int]Review) {
 	}
 }
 
-// pr-task titles every task "Review PR #N: ...". Only unfinished tasks count;
+// pr-task titles every task "PR #N ..." ("Review PR #N: ..." before). Only unfinished tasks count;
 // ty list leaves done ones out by default.
 func taskReviews(main string, out map[int]Review) {
 	if _, err := exec.LookPath("ty"); err != nil {

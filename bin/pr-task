@@ -30,7 +30,9 @@ num="${1:-}"
 shift
 
 meta=$(gh pr view "$num" "$@" --json title,headRefName,isCrossRepository,url)
-title=$(printf '%s' "$meta" | jq -r .title)
+# The task title is what the iTerm sidebar shows, truncated after ~30 chars, so
+# drop the leading ticket key ("OL-3861: ") that repeats what the branch says.
+title=$(printf '%s' "$meta" | jq -r '.title | sub("^[A-Z][A-Z0-9]*-[0-9]+:\\s*"; "")')
 branch=$(printf '%s' "$meta" | jq -r .headRefName)
 url=$(printf '%s' "$meta" | jq -r .url)
 
@@ -45,9 +47,10 @@ git fetch -q origin "$branch" 2>/dev/null || true
 # branch away from the first task's worktree and starts a fresh conversation,
 # which is how PR #3569 ended up with two review tasks. Reopen the newest
 # existing one instead, finished or not; its conversation resumes.
+# Older tasks are titled "Review PR #N: ...", newer ones "PR #N ...".
 existing=$(ty list --all --json -n 5000 |
-  jq -r --arg p "Review PR #$num: " \
-    '[.[] | select(.title | startswith($p)) | select(.status != "archived")] | max_by(.id) | .id // empty')
+  jq -r --arg n "$num" \
+    '[.[] | select(.title | test("^(Review )?PR #" + $n + "\\b")) | select(.status != "archived")] | max_by(.id) | .id // empty')
 if [ -n "$existing" ]; then
   ty status "$existing" blocked >/dev/null
   echo "task #$existing  ·  PR #$num  ·  $branch  (already existed)"
@@ -69,7 +72,7 @@ PR: $url
 Branch: $branch"
 
 # TaskYou speaks the same agent names, so PR_AGENT carries across both paths.
-out=$(ty create "Review PR #$num: $title" --branch "$branch" --body "$body" \
+out=$(ty create "PR #$num $title" --branch "$branch" --body "$body" \
   --executor "$PR_AGENT" --json)
 id=$(printf '%s' "$out" | jq -r .id)
 if [ -z "$id" ] || [ "$id" = "null" ]; then
