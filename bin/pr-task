@@ -29,6 +29,12 @@ num="${1:-}"
 [ -z "$num" ] && { echo "usage: pr-task [--agent NAME] NUMBER [-R OWNER/REPO]" >&2; exit 2; }
 shift
 
+# Every step here takes a second or more and prints nothing, which from the
+# picker is a blank screen. Say what is happening, on stderr so scripted callers
+# still get just the id line on stdout.
+step() { printf '\033[2m→ %s\033[0m\n' "$*" >&2; }
+
+step "PR #$num: looking it up"
 meta=$(gh pr view "$num" "$@" --json title,headRefName,isCrossRepository,url)
 # The task title is what the iTerm sidebar shows, truncated after ~30 chars, so
 # drop the leading ticket key ("OL-3861: ") that repeats what the branch says.
@@ -41,6 +47,7 @@ if [ "$(printf '%s' "$meta" | jq -r .isCrossRepository)" = "true" ]; then
   exit 1
 fi
 
+step "fetching $branch"
 git fetch -q origin "$branch" 2>/dev/null || true
 
 # One task per PR. A second `ty create --branch` for the same PR takes the
@@ -48,6 +55,7 @@ git fetch -q origin "$branch" 2>/dev/null || true
 # which is how PR #3569 ended up with two review tasks. Reopen the newest
 # existing one instead, finished or not; its conversation resumes.
 # Older tasks are titled "Review PR #N: ...", newer ones "PR #N ...".
+step "checking the board for a task already reviewing it"
 existing=$(ty list --all --json -n 5000 |
   jq -r --arg n "$num" \
     '[.[] | select(.title | test("^(Review )?PR #" + $n + "\\b")) | select(.status != "archived")] | max_by(.id) | .id // empty')
@@ -55,6 +63,7 @@ if [ -n "$existing" ]; then
   ty status "$existing" blocked >/dev/null
   echo "task #$existing  ·  PR #$num  ·  $branch  (already existed)"
   if [ -t 0 ] && [ -t 1 ]; then
+    step "opening task #$existing in ty"
     exec ty open "$existing"
   fi
   echo "open it with: ty open $existing"
@@ -72,6 +81,7 @@ PR: $url
 Branch: $branch"
 
 # TaskYou speaks the same agent names, so PR_AGENT carries across both paths.
+step "creating the task"
 out=$(ty create "PR #$num $title" --branch "$branch" --body "$body" \
   --executor "$PR_AGENT" --json)
 id=$(printf '%s' "$out" | jq -r .id)
@@ -95,6 +105,7 @@ echo "task #$id  ·  PR #$num  ·  $branch"
 # Straight into the task, which starts the walkthrough. Only with a terminal to
 # hand over; scripted callers just get the id.
 if [ -t 0 ] && [ -t 1 ]; then
+  step "opening task #$id in ty, which starts the agent"
   exec ty open "$id"
 fi
 echo "open it with: ty open $id"

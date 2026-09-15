@@ -35,6 +35,10 @@ command -v "$PR_AGENT" >/dev/null 2>&1 || {
 
 sess="pr-$num"
 
+# The fetches and the worktree take a few seconds and print nothing, which from
+# the picker is a blank screen. Say what is happening.
+step() { printf '\033[2m→ %s\033[0m\n' "$*"; }
+
 go_there() {
   if [ -n "${TMUX:-}" ]; then exec tmux switch-client -t "$sess"
   else exec tmux attach -t "$sess"; fi
@@ -51,6 +55,7 @@ common=$(git rev-parse --path-format=absolute --git-common-dir)
 main=$(dirname "$common")
 repo=$(basename "$main")
 
+step "PR #$num: looking it up"
 meta=$(gh pr view "$num" "$@" --json title,baseRefName,url)
 base=$(printf '%s' "$meta" | jq -r .baseRefName)
 url=$(printf '%s' "$meta" | jq -r .url)
@@ -62,6 +67,7 @@ wt="$PR_WORKTREE_ROOT/$repo/pr-$num"
 # refuses to fetch into a branch that is checked out in any worktree, so
 # fetching into pr/<n> breaks the moment this PR has been opened once before.
 # refs/pull/N/head also resolves for forks, unlike origin/<headRefName>.
+step "fetching the PR and $base"
 git -C "$main" fetch -q --force origin "refs/pull/$num/head:refs/prboom/$num"
 head=$(git -C "$main" rev-parse "refs/prboom/$num")
 
@@ -86,6 +92,7 @@ if [ -d "$wt" ]; then
     echo "→ PR #$num: worktree moved up to the current head"
   fi
 else
+  step "making a worktree at $wt"
   git -C "$main" worktree add -q -B "$branch" "$wt" "$head"
 fi
 
@@ -139,6 +146,7 @@ shell="${SHELL:-/bin/zsh}"
 # Its own session, even when called from inside tmux: review sessions stay
 # separate (tmux ls lists them, detach and reattach work), and the mouse
 # setting below applies here and nowhere else.
+step "starting $(basename "$PR_AGENT") in tmux session $sess"
 tmux new-session -d -s "$sess" -c "$wt" "${agent[@]}"
 tmux split-window -h -t "$sess:0.0" -c "$wt" "$shell"
 tmux select-pane -t "$sess:0.0" -T Agent
