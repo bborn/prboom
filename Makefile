@@ -1,4 +1,6 @@
-PREFIX  ?= $(HOME)/bin
+# Same place install.sh uses. Agents started by a daemon (TaskYou) get a
+# non-interactive PATH, which has ~/.local/bin but not a ~/bin added in .zshrc.
+PREFIX  ?= $(HOME)/.local/bin
 SKILLS  := $(wildcard $(HOME)/.claude $(HOME)/.claude-*)
 SCRIPTS := $(notdir $(wildcard bin/*))
 
@@ -25,7 +27,7 @@ install: build
 
 uninstall:
 	@rm -f $(PREFIX)/prboom $(foreach s,$(SCRIPTS),$(PREFIX)/$(s))
-	@for d in $(SKILLS); do rm -f "$$d/skills/pr-walk"; done
+	@for d in $(SKILLS); do [ -d "$$d" ] && rm -f "$$d/skills/pr-walk"; done; true
 	@echo "unlinked"
 
 clean:

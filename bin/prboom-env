@@ -1,7 +1,7 @@
 # Sourced by the prboom scripts. Not executable, not on its own a command.
 #
 # PRBOOM_HOME is the repo this was installed from, resolved through the symlink
-# in ~/bin, so the skill file can be found without configuring a path.
+# in ~/.local/bin, so the skill file can be found without configuring a path.
 PRBOOM_HOME="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")")/.." && pwd)"
 
 #
