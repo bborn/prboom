@@ -41,6 +41,23 @@ fi
 
 git fetch -q origin "$branch" 2>/dev/null || true
 
+# One task per PR. A second `ty create --branch` for the same PR takes the
+# branch away from the first task's worktree and starts a fresh conversation,
+# which is how PR #3569 ended up with two review tasks. Reopen the newest
+# existing one instead, finished or not; its conversation resumes.
+existing=$(ty list --all --json -n 5000 |
+  jq -r --arg p "Review PR #$num: " \
+    '[.[] | select(.title | startswith($p)) | select(.status != "archived")] | max_by(.id) | .id // empty')
+if [ -n "$existing" ]; then
+  ty status "$existing" blocked >/dev/null
+  echo "task #$existing  ·  PR #$num  ·  $branch  (already existed)"
+  if [ -t 0 ] && [ -t 1 ]; then
+    exec ty open "$existing"
+  fi
+  echo "open it with: ty open $existing"
+  exit 0
+fi
+
 # TaskYou seeds the agent's first prompt with the title and this body, so the
 # skill invocation goes here rather than being typed every time.
 body="/pr-walk
