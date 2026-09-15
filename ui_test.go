@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -52,6 +53,55 @@ func keys(m model, ks ...string) model {
 func loaded(w, h int, repo string, prs []PR) model {
 	m := newModel(options{repo: repo, scope: "all", sortBy: "recency", limit: 60, dark: true})
 	return update(m, tea.WindowSizeMsg{Width: w, Height: h}, loadedMsg{scope: 1, prs: prs, at: time.Now()})
+}
+
+// prboom 1234 and ⏎ on it run the same thing, as do prboom 1234 -ty and t.
+func TestCommandForAPR(t *testing.T) {
+	o := options{repo: "o/r", agent: "codex"}
+	for _, c := range []struct {
+		kind    string
+		reviews map[int]Review
+		want    string
+	}{
+		{"open", nil, "pr-open --agent codex 1234 -R o/r"},
+		{"task", nil, "pr-task --agent codex 1234 -R o/r"},
+		{"task", map[int]Review{1234: {TaskID: 5436}}, "ty open 5436"},
+	} {
+		name, args := command(c.kind, 1234, o, c.reviews)
+		if got := strings.Join(append([]string{name}, args...), " "); got != c.want {
+			t.Errorf("%s: got %q, want %q", c.kind, got, c.want)
+		}
+	}
+}
+
+// Opening prboom again in a repo lands on the list, sort and narrowing it was
+// left with, while a flag given this time still wins.
+func TestViewStateComesBack(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	was := loaded(120, 40, "o/r", fakePRs(9))
+	was = keys(was, "s", "s", "f", "/", "c", "h", "enter")
+	writeState(path, was.state())
+
+	s, ok := readState(path)
+	if !ok {
+		t.Fatal("saved state did not read back")
+	}
+	o := options{repo: "o/r", scope: "review", sortBy: "recency", limit: 60, dark: true}
+	s.apply(&o, map[string]bool{})
+	now := update(newModel(o), tea.WindowSizeMsg{Width: 120, Height: 40},
+		loadedMsg{scope: 1, prs: fakePRs(9), at: time.Now()})
+	if now.state() != was.state() {
+		t.Fatalf("reopened as %+v, left as %+v", now.state(), was.state())
+	}
+	if len(now.prs) == 0 || len(now.prs) != len(was.prs) {
+		t.Fatalf("reopened showing %d PRs, left showing %d", len(now.prs), len(was.prs))
+	}
+
+	o = options{scope: "all", sortBy: "files"}
+	s.apply(&o, map[string]bool{"s": true})
+	if o.sortBy != "files" {
+		t.Fatalf("-s files was overridden by the saved sort %q", o.sortBy)
+	}
 }
 
 // The old picker printed rows wider than the terminal and more of them than

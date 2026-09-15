@@ -42,6 +42,7 @@ const (
 
 type options struct {
 	repo, scope, author, sortBy, agent string
+	only, query                        string // narrowing restored from last time
 	limit                              int
 	dark                               bool
 }
@@ -138,6 +139,7 @@ func newModel(o options) model {
 	q.Prompt = "/ "
 	q.Placeholder = "title, author, branch or #number"
 	q.Cursor.SetMode(cursor.CursorStatic)
+	q.SetValue(o.query)
 
 	scope := 0
 	for i, s := range scopes {
@@ -150,6 +152,7 @@ func newModel(o options) model {
 		opt:        o,
 		repoName:   o.repo,
 		scope:      scope,
+		only:       o.only,
 		lists:      make([][]PR, n),
 		have:       make([]bool, n),
 		at:         make([]time.Time, n),
@@ -482,35 +485,36 @@ const diffScript = `gh pr diff "$1" ${2:+-R "$2"} | delta --paging=always --navi
 const holdOnFailure = `"$0" "$@" || { s=$?; ` +
 	`printf '\n\033[2mexited %s · enter goes back to the list\033[0m' "$s"; read -r _; exit $s; }`
 
-// launch hands the terminal to another command and takes it back after, so a
-// walk, a task or a diff returns to the list instead of ending it.
-func (m *model) launch(kind string, p PR) tea.Cmd {
-	o := m.opt
+// command is what a kind of launch runs for PR n: "open" walks it, "task" walks
+// it as a TaskYou task, "diff" pages its diff.
+func command(kind string, n int, o options, reviews map[int]Review) (string, []string) {
 	var args []string
 	if o.agent != "" {
 		args = append(args, "--agent", o.agent)
 	}
-	args = append(args, fmt.Sprint(p.Number))
+	args = append(args, fmt.Sprint(n))
 	if o.repo != "" {
 		args = append(args, "-R", o.repo)
 	}
 
-	var name string
 	switch kind {
-	case "open":
-		// git + tmux only. Nothing else is required to walk a PR.
-		name = "pr-open"
 	case "task":
 		// Already on the board: go back to that task rather than make a twin.
-		if id := m.reviews[p.Number].TaskID; id != 0 {
-			name, args = "ty", []string{"open", fmt.Sprint(id)}
-		} else {
-			name = "pr-task"
+		if id := reviews[n].TaskID; id != 0 {
+			return "ty", []string{"open", fmt.Sprint(id)}
 		}
+		return "pr-task", args
 	case "diff":
-		name, args = "sh", []string{"-c", diffScript, "prboom-diff", fmt.Sprint(p.Number), o.repo}
+		return "sh", []string{"-c", diffScript, "prboom-diff", fmt.Sprint(n), o.repo}
 	}
+	// git + tmux only. Nothing else is required to walk a PR.
+	return "pr-open", args
+}
 
+// launch hands the terminal to another command and takes it back after, so a
+// walk, a task or a diff returns to the list instead of ending it.
+func (m *model) launch(kind string, p PR) tea.Cmd {
+	name, args := command(kind, p.Number, m.opt, m.reviews)
 	path, err := exec.LookPath(name)
 	if err != nil {
 		return m.say(name+" is not on PATH", true)

@@ -24,19 +24,25 @@ type cachedList struct {
 // Without -R that is the repo's git dir, so two checkouts of one repo share.
 func cacheFile(repo, scope, author string, limit int) string {
 	dir, err := os.UserCacheDir()
-	if err != nil {
+	where := repoKey(repo)
+	if err != nil || where == "" {
 		return ""
-	}
-	where := repo
-	if where == "" {
-		out, err := exec.Command("git", "rev-parse", "--path-format=absolute", "--git-common-dir").Output()
-		if err != nil {
-			return ""
-		}
-		where = strings.TrimSpace(string(out))
 	}
 	sum := sha1.Sum([]byte(fmt.Sprintf("%s|%s|%s|%d", where, scope, author, limit)))
 	return filepath.Join(dir, "prboom", hex.EncodeToString(sum[:8])+".json")
+}
+
+// repoKey names the repo a list comes from: -R as given, or else the repo's
+// git dir, so two checkouts of one repo share. Empty when neither is known.
+func repoKey(repo string) string {
+	if repo != "" {
+		return repo
+	}
+	out, err := exec.Command("git", "rev-parse", "--path-format=absolute", "--git-common-dir").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 func readCache(path string) ([]PR, time.Time, bool) {
@@ -59,10 +65,15 @@ func readCache(path string) ([]PR, time.Time, bool) {
 
 // writeCache is best effort: a list that cannot be cached is still a list.
 func writeCache(path string, prs []PR) {
+	writeJSON(path, cachedList{At: time.Now(), PRs: prs})
+}
+
+// writeJSON replaces path whole, so a reader never sees half a file.
+func writeJSON(path string, v any) {
 	if path == "" {
 		return
 	}
-	b, err := json.Marshal(cachedList{At: time.Now(), PRs: prs})
+	b, err := json.Marshal(v)
 	if err != nil || os.MkdirAll(filepath.Dir(path), 0o755) != nil {
 		return
 	}

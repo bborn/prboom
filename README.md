@@ -10,7 +10,12 @@ prboom -l       # print the list and exit, no picker
 prboom -A login # only PRs by that author (@me works)
 prboom -s loc   # sort by recency (default), author, loc, or files
 prboom -R owner/name
+prboom 1234     # no picker: walk PR 1234 now (same as ⏎ on it)
+prboom 1234 -ty # same, as a TaskYou task opened in ty (same as t on it)
 ```
+
+It opens the way you left it in that repo: the same list, sort, `/` filter and
+`f` author. A flag given this time (`-a`, `-s`) wins over what was saved.
 
 | Key | Does |
 |---|---|
