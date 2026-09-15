@@ -11,13 +11,18 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 func main() {
 	repo := flag.String("R", "", "owner/name, defaults to the repo you are in")
-	all := flag.Bool("a", false, "every open PR, not just ones awaiting your review")
+	all := flag.Bool("a", false, "start on every open PR, not just ones awaiting your review")
+	author := flag.String("A", "", "only PRs by this author (login, or @me)")
+	sortBy := flag.String("s", "recency", "sort by: recency, author, loc, files")
 	limit := flag.Int("n", 60, "how many to fetch")
 	plain := flag.Bool("l", false, "print the list and exit, no picker")
 	agent := flag.String("agent", "", "coding agent: claude, codex, gemini, grok, cursor, opencode")
@@ -32,6 +37,11 @@ func main() {
 		return
 	}
 
+	if !slices.Contains(sorts, *sortBy) {
+		fmt.Fprintf(os.Stderr, "prboom: -s must be one of %s\n", strings.Join(sorts, ", "))
+		os.Exit(2)
+	}
+
 	if *repo == "" && !inGitRepo() {
 		fmt.Fprintln(os.Stderr, "prboom: not inside a git repository (use -R owner/name)")
 		os.Exit(1)
@@ -41,13 +51,19 @@ func main() {
 		os.Exit(1)
 	}
 
+	scope := "review"
+	if *all {
+		scope = "all"
+	}
+
 	if *plain {
-		prs, err := Fetch(*repo, !*all, *limit)
+		prs, err := Fetch(*repo, scope, *author, *limit)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "prboom:", err)
 			os.Exit(1)
 		}
-		printPlain(prs, reviewsFor(*repo))
+		sortPRs(prs, *sortBy)
+		printPlain(prs, reviewsFor(*repo), scope)
 		return
 	}
 
@@ -59,50 +75,27 @@ func main() {
 		_ = exec.Command(sweep, "--stale").Start()
 	}
 
-	// No alt screen: the list renders inline and leaves the terminal as it was.
-	p := tea.NewProgram(newModel(*repo, !*all, *limit))
-	final, err := p.Run()
-	if err != nil {
+	// Asked once, before the TUI owns the terminal: the markdown and diff
+	// renderers would otherwise each query it mid-frame.
+	dark := lipgloss.HasDarkBackground()
+
+	p := tea.NewProgram(newModel(options{
+		repo: *repo, scope: scope, author: *author, sortBy: *sortBy,
+		agent: *agent, limit: *limit, dark: dark,
+	}), tea.WithAltScreen())
+	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "prboom:", err)
 		os.Exit(1)
 	}
-
-	m, ok := final.(model)
-	if !ok {
-		return
-	}
-	args := []string{}
-	if *agent != "" {
-		args = append(args, "--agent", *agent)
-	}
-	args = append(args, fmt.Sprint(m.action.PR.Number))
-	if *repo != "" {
-		args = append(args, "-R", *repo)
-	}
-	switch m.action.Kind {
-	case "open":
-		// git + tmux only. Nothing else is required to walk a PR.
-		run("pr-open", args...)
-	case "task":
-		// Already on the board: go back to that task rather than make a twin.
-		if id := m.action.Review.TaskID; id != 0 {
-			run("ty", "open", fmt.Sprint(id))
-			return
-		}
-		// Same two-pane shape, but tracked on the TaskYou board.
-		run("pr-task", args...)
-	case "diff":
-		// Read the diff without making a task of it.
-		run("sh", "-c", fmt.Sprintf(
-			`gh pr diff %d | delta --paging=always --navigate --line-numbers --hyperlinks `+
-				`--hyperlinks-file-link-format "file://{path}#{line}" --side-by-side`,
-			m.action.PR.Number))
-	}
 }
 
-func printPlain(prs []PR, reviews map[int]Review) {
+func printPlain(prs []PR, reviews map[int]Review, scope string) {
 	if len(prs) == 0 {
-		fmt.Println("nothing waiting on you.")
+		for _, s := range scopes {
+			if s.Key == scope {
+				fmt.Printf("nothing in %s.\n", s.Label)
+			}
+		}
 		return
 	}
 	for _, p := range prs {
@@ -119,24 +112,6 @@ func printPlain(prs []PR, reviews map[int]Review) {
 
 func inGitRepo() bool {
 	return exec.Command("git", "rev-parse", "--git-dir").Run() == nil
-}
-
-// run hands the terminal to another command and exits with its status.
-func run(name string, args ...string) {
-	path, err := exec.LookPath(name)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "prboom: %s not found on PATH\n", name)
-		os.Exit(1)
-	}
-	cmd := exec.Command(path, args...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	if err := cmd.Run(); err != nil {
-		if ee, ok := err.(*exec.ExitError); ok {
-			os.Exit(ee.ExitCode())
-		}
-		fmt.Fprintln(os.Stderr, "prboom:", err)
-		os.Exit(1)
-	}
 }
 
 func openBrowser(url string) {

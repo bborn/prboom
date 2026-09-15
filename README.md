@@ -7,22 +7,37 @@ the pane next to you.
 prboom          # PRs waiting on your review
 prboom -a       # every open PR
 prboom -l       # print the list and exit, no picker
+prboom -A login # only PRs by that author (@me works)
+prboom -s loc   # sort by recency (default), author, loc, or files
 prboom -R owner/name
 ```
 
 | Key | Does |
 |---|---|
-| `↑` `↓` `j` `k` | move |
+| `↑` `↓` `j` `k` `g` `G` | move |
+| `1` `2` `3` | review requested, all open, mine (`a` still toggles the first two) |
+| `/` | filter by title, author, branch or `#number`; `esc` clears it |
+| `f` | show only this PR's author; again for everyone |
+| `s` | cycle the sort: recency, author, loc, files (biggest first) |
+| `tab` | detail pane: overview, files, diff |
+| `J` `K` `space` `^d` `^u` | scroll the detail pane |
+| `p` | hide or show the detail pane |
 | `⏎` | walk it now: worktree + tmux window + agent |
 | `t` | same, but tracked as a TaskYou task, and opened in ty; reopens the task if there already is one |
-| `d` | read the diff in delta, open nothing |
+| `d` | the whole diff in delta, side by side |
 | `o` | open it on GitHub |
-| `a` | toggle between yours and every open PR |
+| `y` | copy its URL |
 | `r` | refresh |
+| `?` | every key |
 | `q` | quit |
 
-The picker renders inline rather than in an alternate screen, so it leaves your
-scrollback alone. It does not judge the PRs for you.
+The list sits beside a detail pane (under it, in a narrow terminal) that shows
+the description, reviewers, files, and the diff through delta, for whichever PR
+the cursor rests on. `⏎`, `t` and `d` hand the terminal over and come back to
+the list when they finish. It does not judge the PRs for you.
+
+It opens on the last list it fetched while gh fetches a fresh one, so there is
+something to read at once; left open, it refreshes every few minutes.
 
 A PR you are already walking is marked beside its number: `ty 5421` for an
 unfinished TaskYou review task in this repo's project, `open` for a `pr-open`
