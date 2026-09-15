@@ -15,7 +15,10 @@ me="${TMUX_PANE:-}"
 [ -z "$me" ] && { echo "pr-pane: TMUX_PANE is unset" >&2; exit 1; }
 # Resolve the caller's own window. Without -t, tmux answers for whichever
 # window is active, which sends keys into another task's session.
-win=$(tmux display-message -t "$me" -p '#{session_name}:#{window_index}') || exit 1
+# By window id, not session:index: TaskYou links a task's window into a
+# throwaway ty-view-* session each time it is opened, and tmux may name one that
+# has since closed, which left the pane unreachable mid-walk.
+win=$(tmux display-message -t "$me" -p '#{window_id}') || exit 1
 
 target=$(tmux list-panes -t "$win" -F '#{pane_id}	#{pane_title}' \
   | awk -F'\t' '$2 == "Shell" { print $1; exit }')
