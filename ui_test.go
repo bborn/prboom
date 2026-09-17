@@ -66,6 +66,7 @@ func TestCommandForAPR(t *testing.T) {
 		{"open", nil, "pr-open --agent codex 1234 -R o/r"},
 		{"task", nil, "pr-task --agent codex 1234 -R o/r"},
 		{"task", map[int]Review{1234: {TaskID: 5436}}, "ty open 5436"},
+		{"close", nil, "pr-close 1234"},
 	} {
 		name, args := command(c.kind, 1234, o, c.reviews)
 		if got := strings.Join(append([]string{name}, args...), " "); got != c.want {

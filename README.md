@@ -30,6 +30,7 @@ It opens the way you left it in that repo: the same list, sort, `/` filter and
 | `⏎` | walk it now: worktree + tmux window + agent |
 | `t` | same, but tracked as a TaskYou task, and opened in ty; reopens the task if there already is one |
 | `d` | the whole diff in delta, side by side |
+| `x` | close the walk you have open on it: session, worktree, branch |
 | `L` | learn how you review this repo (`/pr-learn`), then back to the list |
 | `o` | open it on GitHub |
 | `y` | copy its URL |

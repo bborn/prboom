@@ -461,6 +461,15 @@ func (m *model) key(msg tea.KeyMsg) tea.Cmd {
 		if ok {
 			return m.launch("diff", cur)
 		}
+	case "x":
+		if ok {
+			if r := m.reviews[cur.Number]; r.TaskID != 0 && !r.Local {
+				return m.say(fmt.Sprintf("#%d is TaskYou's: close task %d in ty", cur.Number, r.TaskID), true)
+			} else if !r.Local {
+				return m.say(fmt.Sprintf("nothing open for #%d", cur.Number), false)
+			}
+			return m.launch("close", cur)
+		}
 	case "o":
 		if ok {
 			openBrowser(cur.URL)
@@ -500,8 +509,8 @@ const holdOnFailure = `"$0" "$@" || { s=$?; ` +
 	`printf '\n\033[2mexited %s · enter goes back to the list\033[0m' "$s"; read -r _; exit $s; }`
 
 // command is what a kind of launch runs for PR n: "open" walks it, "task" walks
-// it as a TaskYou task, "diff" pages its diff. "learn" ignores n: it teaches
-// the walk how you review this repo.
+// it as a TaskYou task, "diff" pages its diff, "close" throws a walk away.
+// "learn" ignores n: it teaches the walk how you review this repo.
 func command(kind string, n int, o options, reviews map[int]Review) (string, []string) {
 	var args []string
 	if o.agent != "" {
@@ -521,6 +530,10 @@ func command(kind string, n int, o options, reviews map[int]Review) (string, []s
 		return "pr-task", args
 	case "diff":
 		return "sh", []string{"-c", diffScript, "prboom-diff", fmt.Sprint(n), o.repo}
+	case "close":
+		// By number, in the repo you are in, which is the only place pr-open
+		// put anything. A worktree with uncommitted work is kept and says so.
+		return "pr-close", []string{fmt.Sprint(n)}
 	case "learn":
 		return "sh", []string{"-c", learnScript, "prboom-learn", o.repo, o.agent}
 	}
@@ -1200,6 +1213,7 @@ func helpLines(width int) []string {
 			{"⏎", "walk it: worktree, tmux, agent"},
 			{"t", "walk it as a TaskYou task"},
 			{"d", "the whole diff in delta"},
+			{"x", "close a walk: session, worktree, branch"},
 			{"L", "learn how you review this repo"},
 			{"o", "open it on GitHub"},
 			{"y", "copy its URL"},
