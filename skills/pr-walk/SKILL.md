@@ -141,15 +141,41 @@ changes, print it again before asking again.
 
 ## What counts as a finding
 
-In order: dead code nothing calls, speculative generality with one
-implementation, duplication of something the repo already has, drift from how
-the surrounding code does the same thing, tests that would pass if the
-implementation were deleted, and real bugs.
+Assume the PR may be machine-written and nobody read it closely. Read every
+changed line, not a sample. Before calling anything non-idiomatic, read how the
+neighbouring code in this repo does the same job, and grep for an existing
+helper, concern or pattern the PR could have used.
 
-Not findings: style, formatting, naming, anything a linter or CI catches, or
-anything you would phrase as "consider".
+Three kinds, walked in this order:
 
-Cap the list at eight. If the PR is clean, say so in one line and stop.
+**1. Important.** Wrong behaviour, data loss or corruption, security or auth
+holes, races, N+1s on a hot path, migrations that lock or can't roll back, errors
+swallowed or silently replaced with degraded data, behaviour changes with no
+test, and tests that would still pass if the implementation were deleted.
+
+**2. Stupid.** Things a careful person would never have committed: dead code
+nothing calls, leftover debug output, commented-out code, TODOs, unrelated
+files or drive-by refactors, a reimplementation of something the repo or
+framework already has, copy-paste duplication, an abstraction, option or config
+flag with one caller, defensive checks for states that can't happen, comments
+that narrate what the next line does, and files or methods bloated far past
+what the job needs.
+
+**3. Taste.** Code that works but isn't how this codebase or its framework does
+it: hand-rolled what the framework provides, a new pattern where the repo
+already has one, clever where explicit would do, regex or string matching for
+a problem that isn't about string shape, and names that mislead.
+
+Not findings: formatting, anything a linter or CI catches, or anything you
+would phrase as "consider". A taste finding must point at the idiom it should
+have used, in this repo or the framework; "I'd have done it differently" is
+not one.
+
+Group repeats. If the same smell appears in six places, that is one finding
+listing the six, fixed together.
+
+Raise every finding that clears the bar; do not cap or trim the list. If the
+PR is clean, say so in one line and stop.
 
 ## Style, which is the point of this skill
 
