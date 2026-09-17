@@ -16,15 +16,18 @@ Every rule you propose must point at real comments or commits.
 ## Step 1: gather
 
 Run it from inside the repo (or pass `-R owner/name`), passing on any arguments
-you were given (`--all` to re-read everything, `--since YYYY-MM-DD`):
+you were given (`--all` to ignore the last run's date, `--since YYYY-MM-DD`,
+`--top N` to keep more or fewer PRs):
 
 ```
 pr-learn
 ```
 
-It prints the parts of the corpus, one path per line, and the rules file path
-on stderr. A first run on a busy repo takes a few minutes; tell the reviewer
-that once, then wait. If it prints `nothing new to learn from`, say so and stop.
+It does not read every PR. It scans the recent ones, scores each by how much
+of the reviewer is in it (their own short line comments most, pushed commits
+least), and keeps the best 40. It prints the parts of the corpus, one path per
+line, and the rules file path on stderr. It takes a couple of minutes; tell the
+reviewer that once, then wait. If it prints `nothing new to learn from`, say so and stop.
 
 Read the existing rules file if there is one, and the global rules
 (`~/.config/prboom/rules.md`) and the pr-walk skill's "What counts as a

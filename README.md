@@ -217,7 +217,9 @@ pr-learn --all     # just the gathering step, re-reading everything
 
 `pr-learn` reads PRs other people wrote in this repo that you reviewed or
 commented on: your line comments with the code under them, your PR comments,
-and the small commits you pushed to their branch. The `pr-learn` skill reads
+and the small commits you pushed to their branch. It does not read them all:
+it scans the recent ones and keeps the 40 with the most of you in them (`--top`
+changes that). The `pr-learn` skill reads
 that, proposes rules with the quotes behind each, and asks you to keep, drop or
 sharpen them, a few at a time.
 

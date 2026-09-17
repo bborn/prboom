@@ -1,11 +1,19 @@
 #!/usr/bin/env bash
 # pr-learn [-R OWNER/REPO] [--since YYYY-MM-DD | --all] [--me LOGIN]
+#          [--scan N] [--top N]
 #
 # Gathers how you review in one repo, for the pr-learn skill to turn into rules
 # the pr-walk skill follows there. Reads PRs someone else wrote that you
 # reviewed or commented on, and pulls out three things: your line comments with
 # the code they were on, your review and PR comments, and the commits you
 # pushed to their branch.
+#
+# It does not read everything. It scans the most recently updated PRs (--scan,
+# default 150 per search), scores each by how much of you is in it, and keeps
+# the best (--top, default 40). A short line comment in your own voice scores
+# highest, a PR comment next, a small commit you pushed least (your agent wrote
+# most of those); a mention, a link or "has been merged" scores nothing. Taste shows up in a few dozen good
+# reviews, and recent ones say more about how you review now.
 #
 # Writes a corpus and prints its path. The rules it feeds live, one file per
 # repo, in ~/.config/prboom/repos/OWNER/REPO.md. That file remembers the date it
@@ -19,14 +27,16 @@ export GIT_PAGER=cat PAGER=cat
 # shellcheck source=bin/prboom-env
 . "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/prboom-env"
 
-repo="" since="" all=0 me=""
+repo="" since="" all=0 me="" scan=150 top=40
 while [ $# -gt 0 ]; do
   case "$1" in
     -R) repo="$2"; shift 2 ;;
     --since) since="$2"; shift 2 ;;
     --all) all=1; shift ;;
     --me) me="$2"; shift 2 ;;
-    -h|--help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --scan) scan="$2"; shift 2 ;;
+    --top) top="$2"; shift 2 ;;
+    -h|--help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "pr-learn: unexpected $1" >&2; exit 2 ;;
   esac
 done
@@ -43,12 +53,12 @@ mkdir -p "$out"
 if [ -z "$since" ] && [ "$all" = 0 ] && [ -r "$rules" ]; then
   since=$(sed -n 's/.*pr-learn: mined through \([0-9-]*\).*/\1/p' "$rules" | head -1)
 fi
-filter="repo:$repo is:pr -author:$me"
+filter="repo:$repo is:pr -author:$me sort:updated-desc"
 [ -n "$since" ] && filter="$filter updated:>=$since"
 
 query='
 query($q: String!, $me: String!, $endCursor: String) {
-  search(type: ISSUE, query: $q, first: 10, after: $endCursor) {
+  search(type: ISSUE, query: $q, first: 20, after: $endCursor) {
     pageInfo { hasNextPage endCursor }
     nodes { ... on PullRequest {
       number title url createdAt mergedAt author { login }
@@ -67,29 +77,41 @@ query($q: String!, $me: String!, $endCursor: String) {
 
 raw="$out/raw.json"
 : > "$raw"
+page="$out/page.json"
 for who in reviewed-by commenter; do
-  step "$repo: PRs by others you are $who${since:+, updated since $since}"
-  # GitHub answers a heavy page with an HTML 502 now and then; try again.
-  for try in 1 2 3; do
-    if gh api graphql --paginate -f query="$query" -f q="$filter $who:$me" -f me="$me" \
-      --jq '.data.search.nodes[]' > "$raw.part"; then
-      break
-    fi
-    [ "$try" = 3 ] && { echo "pr-learn: GitHub kept failing the search" >&2; exit 1; }
-    step "GitHub failed that page, trying again"
-    sleep $((try * 5))
+  step "$repo: the $scan most recent PRs by others you are $who${since:+, since $since}"
+  cursor="" seen=0
+  while [ "$seen" -lt "$scan" ]; do
+    # GitHub answers a heavy page with an HTML 502 now and then; try again.
+    for try in 1 2 3; do
+      if gh api graphql -f query="$query" -f q="$filter $who:$me" -f me="$me" \
+        ${cursor:+-f endCursor="$cursor"} > "$page"; then
+        break
+      fi
+      [ "$try" = 3 ] && { echo "pr-learn: GitHub kept failing the search" >&2; exit 1; }
+      step "GitHub failed that page, trying again"
+      sleep $((try * 5))
+    done
+    jq -c '.data.search.nodes[]' "$page" >> "$raw"
+    seen=$((seen + $(jq '.data.search.nodes | length' "$page")))
+    [ "$(jq -r '.data.search.pageInfo.hasNextPage' "$page")" = true ] || break
+    cursor=$(jq -r '.data.search.pageInfo.endCursor' "$page")
   done
-  cat "$raw.part" >> "$raw"
 done
-rm -f "$raw.part"
+rm -f "$page"
 
-# One record per PR, keeping only what is yours and reads like you wrote it.
-step "keeping what reads like you"
-jq -s --arg me "$me" '
+# One record per PR, keeping only what is yours and reads like you wrote it,
+# then only the PRs with the most of you in them.
+step "scoring $(jq -s 'unique_by(.number) | length' "$raw") PRs, keeping the best $top"
+jq -s --arg me "$me" --argjson top "$top" '
   def agentish:
     test("^\\s*(Addressed|Fixed|Done|Resolved|Merged|Rebased|Pushed|Applied|Went ahead|Went with|Verified|Took|We took|Updated|Reverted)\\b"; "i")
     or test("Generated with \\[Claude|Co-Authored-By: Claude"; "i")
     or (length > 1200);
+  # A remark that is only mentions, links and a word or two carries no taste.
+  def empty_remark:
+    gsub("@[\\w-]+|https?://\\S+|#\\d+"; "") | gsub("\\s+"; " ") | length < 20;
+  def weight($short; $long): if length <= 400 then $short else $long end;
   group_by(.number) | map(.[0]) |
   map(select(.author.login != null and (.author.login | endswith("[bot]") | not))) |
   map({
@@ -98,15 +120,18 @@ jq -s --arg me "$me" '
       | select(.author.login == $me and (.body | agentish | not))
       | {path, line: (.line // .originalLine), hunk: (.diffHunk | split("\n") | .[-12:] | join("\n")), body} ],
     remarks: ([ .reviews.nodes[].body | select(. != "" and (agentish | not)) ]
-      + [ .comments.nodes[] | select(.author.login == $me and (.body | agentish | not)) | .body ]),
+      + [ .comments.nodes[] | select(.author.login == $me and (.body | agentish | not)) | .body ])
+      | map(select(empty_remark | not)),
     commits: [ .commits.nodes[].commit
       | select(any(.authors.nodes[]; .user.login == $me))
       | select(.messageHeadline | test("^Merge ") | not)
       | select(.additions + .deletions <= 150)
-      | {oid, messageHeadline, additions, deletions} ] | .[:6]
+      | {oid, messageHeadline, additions, deletions} ] | .[-3:]
   }) |
-  map(select((.line_comments + .remarks + .commits) | length > 0)) |
-  sort_by(-.number)
+  map(.score = ([.line_comments[].body | weight(3; 1)] + [.remarks[] | weight(2; 1)]
+                 + [.commits | length] | add // 0)) |
+  map(select(.score > 0)) |
+  sort_by(-.score, -.number) | .[:$top]
 ' "$raw" > "$out/prs.json"
 
 n=$(jq length "$out/prs.json")
@@ -120,10 +145,18 @@ fi
 # is a few lines, and a 400-line commit is you building the feature, not
 # judging it.
 corpus="$out/corpus.md"
-step "writing $n PRs, with the diffs of commits you pushed"
+step "writing $n PRs (scores $(jq -r '"\(.[0].score) to \(.[-1].score)"' "$out/prs.json")), with the diffs of commits you pushed"
+
+# Diffs first, several at once: one request each is most of the wait.
+diffs="$out/diffs"
+rm -rf "$diffs" && mkdir -p "$diffs"
+jq -r '.[].commits[].oid' "$out/prs.json" |
+  xargs -P 6 -I{} sh -c 'gh api "repos/$1/commits/$2" -H "Accept: application/vnd.github.diff" > "$3/$2.diff" 2>/dev/null || true' _ "$repo" {} "$diffs"
+
 {
   printf '# How %s reviews in %s\n\n' "$me" "$repo"
-  printf '%s PRs by others. Mined %s%s.\n\n' "$n" "$(date +%F)" "${since:+, updated since $since}"
+  printf '%s PRs by others, the ones with the most of you in them. Mined %s%s.\n\n' \
+    "$n" "$(date +%F)" "${since:+, updated since $since}"
   jq -c '.[]' "$out/prs.json" | while read -r pr; do
     printf '%s' "$pr" | jq -r '
       "---\n\n## #\(.number) \(.title)\nby \(.author)\(if .merged then ", merged" else "" end) · \(.url)\n",
@@ -132,9 +165,8 @@ step "writing $n PRs, with the diffs of commits you pushed"
     printf '%s' "$pr" | jq -r '.commits[] | [.oid, .messageHeadline, .additions, .deletions] | @tsv' |
       while IFS=$'\t' read -r oid head add del; do
         printf '### your commit %s: %s (+%s/-%s)\n```diff\n' "${oid:0:10}" "$head" "$add" "$del"
-        gh api "repos/$repo/commits/$oid" -H 'Accept: application/vnd.github.diff' 2>/dev/null |
-          awk '/^diff --git/ { skip = ($0 ~ /(lock|schema\.rb|structure\.sql|\.snap|\.svg)( |$)/) }
-               !skip && ++n <= 150' || true
+        awk '/^diff --git/ { skip = ($0 ~ /(lock|schema\.rb|structure\.sql|\.snap|\.svg)( |$)/) }
+             !skip && ++n <= 80' "$diffs/$oid.diff" 2>/dev/null || true
         printf '```\n\n'
       done
   done
