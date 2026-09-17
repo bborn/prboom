@@ -30,6 +30,7 @@ It opens the way you left it in that repo: the same list, sort, `/` filter and
 | `⏎` | walk it now: worktree + tmux window + agent |
 | `t` | same, but tracked as a TaskYou task, and opened in ty; reopens the task if there already is one |
 | `d` | the whole diff in delta, side by side |
+| `L` | learn how you review this repo (`/pr-learn`), then back to the list |
 | `o` | open it on GitHub |
 | `y` | copy its URL |
 | `r` | refresh |
@@ -211,6 +212,7 @@ Neither file has to exist.
 ### Teaching it how you review
 
 ```
+L                  # in the picker
 /pr-learn          # in Claude Code, inside the repo
 pr-learn --all     # just the gathering step, re-reading everything
 ```

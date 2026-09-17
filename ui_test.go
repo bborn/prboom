@@ -74,6 +74,15 @@ func TestCommandForAPR(t *testing.T) {
 	}
 }
 
+// L runs the learn script with the repo and agent as its arguments, whatever PR
+// the cursor is on.
+func TestCommandForLearn(t *testing.T) {
+	name, args := command("learn", 1234, options{repo: "o/r", agent: "codex"}, nil)
+	if name != "sh" || len(args) != 5 || args[1] != learnScript || args[3] != "o/r" || args[4] != "codex" {
+		t.Errorf("got %s %q", name, args)
+	}
+}
+
 // Opening prboom again in a repo lands on the list, sort and narrowing it was
 // left with, while a flag given this time still wins.
 func TestViewStateComesBack(t *testing.T) {

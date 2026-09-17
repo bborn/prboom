@@ -447,6 +447,8 @@ func (m *model) key(msg tea.KeyMsg) tea.Cmd {
 		m.filter()
 		return m.touch()
 
+	case "L":
+		return m.launch("learn", cur)
 	case "enter":
 		if ok {
 			return m.launch("open", cur)
@@ -481,12 +483,25 @@ func (m *model) key(msg tea.KeyMsg) tea.Cmd {
 const diffScript = `gh pr diff "$1" ${2:+-R "$2"} | delta --paging=always --navigate --line-numbers ` +
 	`--side-by-side --hyperlinks --hyperlinks-file-link-format "file://{path}#{line}"`
 
+// learnScript starts the agent on the pr-learn skill for the repo, in this
+// terminal: it reads PRs and writes rules, so it needs no worktree. $1 is the
+// repo and $2 the --agent, either empty. Claude gets the slash command; any
+// other agent the file.
+const learnScript = `. "$(dirname "$(readlink -f "$(command -v pr-learn)")")/prboom-env"
+[ -n "$2" ] && PR_AGENT=$2
+args=${1:+-R $1}
+case "$PR_AGENT" in
+  claude) exec claude "/pr-learn $args" ;;
+  *) exec "$PR_AGENT" "Read $PRBOOM_HOME/skills/pr-learn/SKILL.md and follow it exactly. Arguments: $args" ;;
+esac`
+
 // holdOnFailure runs "$0" "$@" and, only if it fails, waits for enter.
 const holdOnFailure = `"$0" "$@" || { s=$?; ` +
 	`printf '\n\033[2mexited %s · enter goes back to the list\033[0m' "$s"; read -r _; exit $s; }`
 
 // command is what a kind of launch runs for PR n: "open" walks it, "task" walks
-// it as a TaskYou task, "diff" pages its diff.
+// it as a TaskYou task, "diff" pages its diff. "learn" ignores n: it teaches
+// the walk how you review this repo.
 func command(kind string, n int, o options, reviews map[int]Review) (string, []string) {
 	var args []string
 	if o.agent != "" {
@@ -506,6 +521,8 @@ func command(kind string, n int, o options, reviews map[int]Review) (string, []s
 		return "pr-task", args
 	case "diff":
 		return "sh", []string{"-c", diffScript, "prboom-diff", fmt.Sprint(n), o.repo}
+	case "learn":
+		return "sh", []string{"-c", learnScript, "prboom-learn", o.repo, o.agent}
 	}
 	// git + tmux only. Nothing else is required to walk a PR.
 	return "pr-open", args
@@ -1183,6 +1200,7 @@ func helpLines(width int) []string {
 			{"⏎", "walk it: worktree, tmux, agent"},
 			{"t", "walk it as a TaskYou task"},
 			{"d", "the whole diff in delta"},
+			{"L", "learn how you review this repo"},
 			{"o", "open it on GitHub"},
 			{"y", "copy its URL"},
 			{"esc", "clear the filter; with none, quit"},
