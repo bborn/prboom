@@ -3,6 +3,7 @@
 PREFIX  ?= $(HOME)/.local/bin
 SKILLS  := $(wildcard $(HOME)/.claude $(HOME)/.claude-*)
 SCRIPTS := $(notdir $(wildcard bin/*))
+SKILL_NAMES := $(notdir $(wildcard skills/*))
 
 .PHONY: all build install uninstall clean
 
@@ -21,13 +22,13 @@ install: build
 	@n=0; for d in $(SKILLS); do \
 		[ -d "$$d" ] || continue; \
 		mkdir -p "$$d/skills"; \
-		ln -sfn $(CURDIR)/skills/pr-walk "$$d/skills/pr-walk"; \
+		for k in $(SKILL_NAMES); do ln -sfn $(CURDIR)/skills/$$k "$$d/skills/$$k"; done; \
 		n=$$((n+1)); \
-	done; echo "linked pr-walk into $$n claude config dirs"
+	done; echo "linked $(SKILL_NAMES) into $$n claude config dirs"
 
 uninstall:
 	@rm -f $(PREFIX)/prboom $(foreach s,$(SCRIPTS),$(PREFIX)/$(s))
-	@for d in $(SKILLS); do [ -d "$$d" ] && rm -f "$$d/skills/pr-walk"; done; true
+	@for d in $(SKILLS); do for k in $(SKILL_NAMES); do rm -f "$$d/skills/$$k"; done; done; true
 	@echo "unlinked"
 
 clean:

@@ -20,7 +20,11 @@ what follows:
 ```
 cat ~/.config/prboom/rules.md 2>/dev/null
 cat "$(git rev-parse --show-toplevel)/.prboom.md" 2>/dev/null
+cat ~/.config/prboom/repos/"$(gh repo view --json nameWithOwner -q .nameWithOwner)".md 2>/dev/null
 ```
+
+The last is what `pr-learn` learned from the reviewer's past reviews in this
+repo. It is the most specific, so it wins over the other two.
 
 Then work out the base and the size:
 

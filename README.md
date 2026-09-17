@@ -208,6 +208,28 @@ top.
 
 Neither file has to exist.
 
+### Teaching it how you review
+
+```
+/pr-learn          # in Claude Code, inside the repo
+pr-learn --all     # just the gathering step, re-reading everything
+```
+
+`pr-learn` reads PRs other people wrote in this repo that you reviewed or
+commented on: your line comments with the code under them, your PR comments,
+and the small commits you pushed to their branch. The `pr-learn` skill reads
+that, proposes rules with the quotes behind each, and asks you to keep, drop or
+sharpen them, a few at a time.
+
+What you keep goes in `~/.config/prboom/repos/OWNER/NAME.md`, which pr-walk
+loads on top of the other two files, and which wins over both. Rules stay per
+repo, because what you flag in one codebase is not what you flag in another.
+Run it again later and it reads only what is new since the last time.
+
+Comments an agent posted under your name are dropped where they are obvious and
+ignored by the skill where they are not, so it learns your taste rather than
+the agent's.
+
 ## Needs
 
 `git` and `tmux`. `gh` authenticated, and `jq`. `delta` for the picker's diff

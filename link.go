@@ -21,7 +21,8 @@ func home() (string, error) {
 	return filepath.Dir(filepath.Dir(exe)), nil
 }
 
-// linkSkill puts the pr-walk skill in every Claude config directory it finds.
+// linkSkill puts the skills (pr-walk, pr-learn) in every Claude config
+// directory it finds.
 // A package manager must not write to $HOME, so this is a command you run
 // rather than something an install does behind your back.
 func linkSkill() error {
@@ -29,9 +30,9 @@ func linkSkill() error {
 	if err != nil {
 		return err
 	}
-	src := filepath.Join(root, "skills", "pr-walk")
-	if _, err := os.Stat(src); err != nil {
-		return fmt.Errorf("no skill at %s", src)
+	srcs, _ := filepath.Glob(filepath.Join(root, "skills", "*"))
+	if len(srcs) == 0 {
+		return fmt.Errorf("no skills in %s", filepath.Join(root, "skills"))
 	}
 
 	hd, err := os.UserHomeDir()
@@ -49,19 +50,24 @@ func linkSkill() error {
 		if err := os.MkdirAll(skills, 0o755); err != nil {
 			continue
 		}
-		dst := filepath.Join(skills, "pr-walk")
-		_ = os.RemoveAll(dst)
-		if err := os.Symlink(src, dst); err != nil {
-			fmt.Fprintf(os.Stderr, "prboom: %v\n", err)
-			continue
+		linked := true
+		for _, src := range srcs {
+			dst := filepath.Join(skills, filepath.Base(src))
+			_ = os.RemoveAll(dst)
+			if err := os.Symlink(src, dst); err != nil {
+				fmt.Fprintf(os.Stderr, "prboom: %v\n", err)
+				linked = false
+			}
 		}
-		n++
+		if linked {
+			n++
+		}
 	}
 
 	if n == 0 {
 		return fmt.Errorf("found no Claude config directory under %s", hd)
 	}
-	fmt.Printf("linked %s into %d Claude config director%s\n", src, n,
+	fmt.Printf("linked %d skills into %d Claude config director%s\n", len(srcs), n,
 		map[bool]string{true: "y", false: "ies"}[n == 1])
 	return nil
 }

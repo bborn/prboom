@@ -1,0 +1,153 @@
+#!/usr/bin/env bash
+# pr-learn [-R OWNER/REPO] [--since YYYY-MM-DD | --all] [--me LOGIN]
+#
+# Gathers how you review in one repo, for the pr-learn skill to turn into rules
+# the pr-walk skill follows there. Reads PRs someone else wrote that you
+# reviewed or commented on, and pulls out three things: your line comments with
+# the code they were on, your review and PR comments, and the commits you
+# pushed to their branch.
+#
+# Writes a corpus and prints its path. The rules it feeds live, one file per
+# repo, in ~/.config/prboom/repos/OWNER/REPO.md. That file remembers the date it
+# was mined through, so a second run only reads what is new; --all ignores it.
+#
+# Comments posted under your name by an agent ("Addressed in 2611ab5 ...",
+# long merge and QA write-ups) are dropped: they are its taste, not yours.
+set -euo pipefail
+export GIT_PAGER=cat PAGER=cat
+
+# shellcheck source=bin/prboom-env
+. "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")/prboom-env"
+
+repo="" since="" all=0 me=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -R) repo="$2"; shift 2 ;;
+    --since) since="$2"; shift 2 ;;
+    --all) all=1; shift ;;
+    --me) me="$2"; shift 2 ;;
+    -h|--help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "pr-learn: unexpected $1" >&2; exit 2 ;;
+  esac
+done
+
+step() { printf '\033[2m→ %s\033[0m\n' "$*" >&2; }
+
+[ -n "$repo" ] || repo=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+[ -n "$me" ] || me=$(gh api user -q .login)
+
+rules="${PR_RULES_DIR:-$HOME/.config/prboom/repos}/$repo.md"
+out="${XDG_CACHE_HOME:-$HOME/.cache}/prboom/learn/$repo"
+mkdir -p "$out"
+
+if [ -z "$since" ] && [ "$all" = 0 ] && [ -r "$rules" ]; then
+  since=$(sed -n 's/.*pr-learn: mined through \([0-9-]*\).*/\1/p' "$rules" | head -1)
+fi
+filter="repo:$repo is:pr -author:$me"
+[ -n "$since" ] && filter="$filter updated:>=$since"
+
+query='
+query($q: String!, $me: String!, $endCursor: String) {
+  search(type: ISSUE, query: $q, first: 10, after: $endCursor) {
+    pageInfo { hasNextPage endCursor }
+    nodes { ... on PullRequest {
+      number title url createdAt mergedAt author { login }
+      reviews(first: 30, author: $me) { nodes {
+        body
+        comments(first: 60) { nodes { author { login } body path line originalLine diffHunk } }
+      } }
+      comments(first: 60) { nodes { author { login } body } }
+      commits(last: 60) { nodes { commit {
+        oid messageHeadline additions deletions
+        authors(first: 3) { nodes { user { login } } }
+      } } }
+    } }
+  }
+}'
+
+raw="$out/raw.json"
+: > "$raw"
+for who in reviewed-by commenter; do
+  step "$repo: PRs by others you are $who${since:+, updated since $since}"
+  # GitHub answers a heavy page with an HTML 502 now and then; try again.
+  for try in 1 2 3; do
+    if gh api graphql --paginate -f query="$query" -f q="$filter $who:$me" -f me="$me" \
+      --jq '.data.search.nodes[]' > "$raw.part"; then
+      break
+    fi
+    [ "$try" = 3 ] && { echo "pr-learn: GitHub kept failing the search" >&2; exit 1; }
+    step "GitHub failed that page, trying again"
+    sleep $((try * 5))
+  done
+  cat "$raw.part" >> "$raw"
+done
+rm -f "$raw.part"
+
+# One record per PR, keeping only what is yours and reads like you wrote it.
+step "keeping what reads like you"
+jq -s --arg me "$me" '
+  def agentish:
+    test("^\\s*(Addressed|Fixed|Done|Resolved|Merged|Rebased|Pushed|Applied|Went ahead|Went with|Verified|Took|We took|Updated|Reverted)\\b"; "i")
+    or test("Generated with \\[Claude|Co-Authored-By: Claude"; "i")
+    or (length > 1200);
+  group_by(.number) | map(.[0]) |
+  map(select(.author.login != null and (.author.login | endswith("[bot]") | not))) |
+  map({
+    number, title, url, author: .author.login, merged: (.mergedAt != null),
+    line_comments: [ .reviews.nodes[].comments.nodes[]
+      | select(.author.login == $me and (.body | agentish | not))
+      | {path, line: (.line // .originalLine), hunk: (.diffHunk | split("\n") | .[-12:] | join("\n")), body} ],
+    remarks: ([ .reviews.nodes[].body | select(. != "" and (agentish | not)) ]
+      + [ .comments.nodes[] | select(.author.login == $me and (.body | agentish | not)) | .body ]),
+    commits: [ .commits.nodes[].commit
+      | select(any(.authors.nodes[]; .user.login == $me))
+      | select(.messageHeadline | test("^Merge ") | not)
+      | select(.additions + .deletions <= 150)
+      | {oid, messageHeadline, additions, deletions} ] | .[:6]
+  }) |
+  map(select((.line_comments + .remarks + .commits) | length > 0)) |
+  sort_by(-.number)
+' "$raw" > "$out/prs.json"
+
+n=$(jq length "$out/prs.json")
+if [ "$n" = 0 ]; then
+  echo "nothing new to learn from in $repo${since:+ since $since}."
+  exit 0
+fi
+
+# The corpus the skill reads. Your commits carry their diff, because what you
+# changed says as much as what you wrote. Only small ones: a fix-up after review
+# is a few lines, and a 400-line commit is you building the feature, not
+# judging it.
+corpus="$out/corpus.md"
+step "writing $n PRs, with the diffs of commits you pushed"
+{
+  printf '# How %s reviews in %s\n\n' "$me" "$repo"
+  printf '%s PRs by others. Mined %s%s.\n\n' "$n" "$(date +%F)" "${since:+, updated since $since}"
+  jq -c '.[]' "$out/prs.json" | while read -r pr; do
+    printf '%s' "$pr" | jq -r '
+      "---\n\n## #\(.number) \(.title)\nby \(.author)\(if .merged then ", merged" else "" end) · \(.url)\n",
+      (.line_comments[] | "### `\(.path):\(.line)`\n```diff\n\(.hunk)\n```\n> \(.body | gsub("\n"; "\n> "))\n"),
+      (.remarks[] | "### comment\n> \(. | gsub("\n"; "\n> "))\n")'
+    printf '%s' "$pr" | jq -r '.commits[] | [.oid, .messageHeadline, .additions, .deletions] | @tsv' |
+      while IFS=$'\t' read -r oid head add del; do
+        printf '### your commit %s: %s (+%s/-%s)\n```diff\n' "${oid:0:10}" "$head" "$add" "$del"
+        gh api "repos/$repo/commits/$oid" -H 'Accept: application/vnd.github.diff' 2>/dev/null |
+          awk '/^diff --git/ { skip = ($0 ~ /(lock|schema\.rb|structure\.sql|\.snap|\.svg)( |$)/) }
+               !skip && ++n <= 150' || true
+        printf '```\n\n'
+      done
+  done
+} > "$corpus"
+
+# In parts at PR boundaries, small enough for one agent to read whole.
+rm -f "$out"/part-*.md
+awk -v dir="$out" -v max=120000 '
+  function next_part() { if (f) close(f); f = sprintf("%s/part-%02d.md", dir, ++p); size = 0 }
+  BEGIN { next_part() }
+  /^---$/ && size > max { next_part() }
+  { print > f; size += length($0) + 1 }
+' "$corpus"
+
+ls "$out"/part-*.md
+echo "rules: $rules" >&2

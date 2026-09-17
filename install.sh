@@ -70,12 +70,14 @@ linked=0
 for d in "$HOME"/.claude "$HOME"/.claude-*; do
   [ -d "$d" ] || continue
   mkdir -p "$d/skills"
-  rm -rf "$d/skills/pr-walk"
-  ln -s "$PREFIX/skills/pr-walk" "$d/skills/pr-walk"
+  for k in "$PREFIX"/skills/*; do
+    rm -rf "$d/skills/$(basename "$k")"
+    ln -s "$k" "$d/skills/$(basename "$k")"
+  done
   linked=$((linked + 1))
 done
 if [ "$linked" -gt 0 ]; then
-  say "linked the pr-walk skill into $linked Claude config dir(s)"
+  say "linked the pr-walk and pr-learn skills into $linked Claude config dir(s)"
 fi
 
 say ""
