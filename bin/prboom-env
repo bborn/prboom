@@ -13,7 +13,6 @@ PRBOOM_HOME="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || e
 #                     opencode, or any command that takes a prompt argument
 #   PR_SKILL          the slash command for agents that have one
 #   PR_SKILL_FILE     the skill as a file, for agents that do not
-#   PR_DELTA_OPTS     extra flags for delta in pr-show
 
 : "${PR_WORKTREE_ROOT:=$HOME/.prboom/worktrees}"
 : "${PR_AGENT:=claude}"

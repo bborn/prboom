@@ -2,8 +2,8 @@
 # pr-open [--agent NAME] NUMBER [-R OWNER/REPO]
 #
 # Opens a PR for walking, using nothing but git and tmux: a worktree for the
-# PR's branch, a session with the agent on the left and a Shell pane on the
-# right, and the agent started on /pr-walk.
+# PR's branch, a session with the agent on the left and the code pane
+# (prboom view) on the right, and the agent started on /pr-walk.
 #
 # Safe to run again on the same PR. Running it twice takes you back to the
 # session you left, and never resets a worktree that has work in it.
@@ -143,12 +143,20 @@ fi
 
 shell="${SHELL:-/bin/zsh}"
 
+# The right pane is the code pane, and becomes a shell when you quit it. pr-show
+# would turn an idle shell into one anyway; starting it here means the PR is on
+# screen before the agent has said anything.
+right="$shell"
+if prboom=$(command -v prboom); then
+  right="'$prboom' view; exec '$shell' -l"
+fi
+
 # Its own session, even when called from inside tmux: review sessions stay
 # separate (tmux ls lists them, detach and reattach work), and the mouse
 # setting below applies here and nowhere else.
 step "starting $(basename "$PR_AGENT") in tmux session $sess"
 tmux new-session -d -s "$sess" -c "$wt" "${agent[@]}"
-tmux split-window -h -t "$sess:0.0" -c "$wt" "$shell"
+tmux split-window -h -t "$sess:0.0" -c "$wt" "$right"
 tmux select-pane -t "$sess:0.0" -T Agent
 tmux select-pane -t "$sess:0.1" -T Shell
 tmux select-pane -t "$sess:0.0"

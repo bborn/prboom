@@ -84,9 +84,7 @@ for c in git tmux gh jq; do
   command -v "$c" >/dev/null 2>&1 || missing="$missing $c"
 done
 if [ -n "$missing" ]; then warn "required, and not found:$missing"; fi
-for c in delta bat; do
-  command -v "$c" >/dev/null 2>&1 || warn "optional, for syntax highlighting: $c"
-done
+command -v delta >/dev/null 2>&1 || warn "optional, for the picker's diff tab and prdiff: delta"
 if command -v gh >/dev/null 2>&1; then
   gh auth status >/dev/null 2>&1 || warn "gh is installed but not logged in: gh auth login"
 fi

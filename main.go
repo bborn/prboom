@@ -21,6 +21,10 @@ import (
 )
 
 func main() {
+	if ok, code := subcommand(os.Args[1:]); ok {
+		os.Exit(code)
+	}
+
 	repo := flag.String("R", "", "owner/name, defaults to the repo you are in")
 	all := flag.Bool("a", false, "start on every open PR, not just ones awaiting your review")
 	author := flag.String("A", "", "only PRs by this author (login, or @me)")
@@ -30,6 +34,20 @@ func main() {
 	agent := flag.String("agent", "", "coding agent: claude, codex, gemini, grok, cursor, opencode")
 	link := flag.Bool("link-skill", false, "install the pr-walk skill into your Claude config dirs, then exit")
 	ty := flag.Bool("ty", false, "with a PR number: walk it as a TaskYou task, opened in ty")
+	flag.Usage = func() {
+		fmt.Fprint(os.Stderr, `usage: prboom [flags] [PR]
+
+During a walk, in the PR's worktree:
+  prboom view                     the code pane
+  prboom show FILE[:LINE] [CTX]   point it at a line (pr-show)
+  prboom findings < list          FILE:LINE title, one per line
+  prboom comment [-left] FILE:LINE TEXT
+  prboom comments [--json | --clear]
+
+flags:
+`)
+		flag.PrintDefaults()
+	}
 	flag.Parse()
 
 	// prboom 1234: no picker, walk that PR. Flags may come after the number,

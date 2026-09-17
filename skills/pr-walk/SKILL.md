@@ -1,6 +1,6 @@
 ---
 name: pr-walk
-description: Walk the reviewer through a pull request one item at a time, putting the relevant code in the pane beside them and asking fix / comment / next on each. Use on "/pr-walk", "walk me through this PR", "review PR 1234", or when the task at hand is a PR review. Runs in a worktree with a Shell pane alongside, made by pr-open or by TaskYou.
+description: Walk the reviewer through a pull request one item at a time, putting the relevant code in the pane beside them and asking fix / comment / next on each. Use on "/pr-walk", "walk me through this PR", "review PR 1234", or when the task at hand is a PR review. Runs in a worktree with the code pane (prboom view) alongside, made by pr-open or by TaskYou.
 ---
 
 # PR walkthrough
@@ -29,8 +29,10 @@ BASE=$(cat "$(git rev-parse --path-format=absolute --git-dir)/pr-review-base" 2>
 git diff --stat "$BASE..."
 ```
 
-Confirm `pr-pane` can reach the Shell pane: `pr-pane` alone prints its id. If it
-errors, say so once and carry on without showing code.
+The pane beside you is the code pane (`prboom view`). You put code in it with
+`pr-show`; the reviewer can also search it, open any changed file, leave notes
+for the author, and ask you about a line. If `pr-show` errors, say so once and
+carry on without showing code.
 
 ## Step 1: what does it even do
 
@@ -48,29 +50,41 @@ Not "I have 4 findings." A statement leaves them looking at a dead end and
 working out what you want. Anything they type into Other that is not a question
 means go.
 
+Before asking, give the code pane the list, in walking order, one per line as
+`FILE:LINE title`. It shows which finding is on screen and lets the reviewer
+step through them. A grouped finding goes in once, at its first place:
+
+```
+prboom findings <<'LIST'
+app/models/offer.rb:120 Delete recalculate_legacy (-21)
+app/services/payout.rb:44 Rounds before converting currency
+LIST
+```
+
 If there are none, say so and stop instead: `Nothing worth your time here.`
 
 ## Step 2: one finding at a time
 
 For each finding, in this order, worst first:
 
-**First** put the code in his pane:
+**First** put the code in their pane:
 
 ```
-pr-pane pr-show app/models/offer.rb:120
+pr-show app/models/offer.rb:120
 ```
 
-**Always pass a line number.** Without one you get the file's entire diff, which
-in a half-width pane is a wall they have to read to find your point. With one,
-they get only the hunks around it.
+Use the same `FILE:LINE` you gave `prboom findings`, so the pane knows which
+finding this is.
 
-`pr-show` decides what is useful: hunks near the line for a changed file,
-syntax-highlighted source for a file the PR adds, source centred on the line for
-a file it doesn't touch. It clears the pane first and never pages, so their
-keyboard stays with you.
+**Always pass a line number.** Without one the pane shows the file's whole
+diff. With one, it shows the lines around it with the PR's changes in place and
+the cursor on that line.
 
-A third argument sets the lines either side, default 30. Use 10 to 15 when the
+A second argument sets the lines either side, default 30. Use 10 to 15 when the
 point is one expression; more only when they need the surrounding method.
+
+`pr-show` never touches their keyboard, and works the same in a pr-open window
+and a TaskYou task.
 
 **Then** say this and nothing else:
 
@@ -106,10 +120,13 @@ the question they asked and only that.
 
 Three words, because more than three means remembering which is which:
 
-- **fix** — make the edit now, in this worktree. Show the result with
-  `pr-pane pr-show <file>:<line>`. One line saying what changed. Next finding.
-- **comment** — they dictate or approve a note for the author. Collect it, do
-  not post. No code changes. Next finding.
+- **fix** — make the edit now, in this worktree. The code pane reloads the file
+  by itself; `pr-show <file>:<line>` if the change is away from what is on
+  screen. One line saying what changed. Next finding.
+- **comment** — they dictate or approve a note for the author. Save it, do not
+  post: `prboom comment app/models/offer.rb:120 "The note"` (with `-left` before
+  the location for a line the PR deletes). It shows up in the code pane. No code
+  changes. Next finding.
 - **next** — no change, no note. Move on and do not raise it again.
 
 **Anything they type into Other is an instruction or a question, not a
@@ -124,6 +141,10 @@ there is no separate word for it.
 
 Never move on without one of the three.
 
+**A message that starts `From the code pane, about FILE:LINE`** is the reviewer
+asking from the pane, with the line quoted. Treat it like Other: answer it or do
+it, then ask the decision you were on again. It does not answer that decision.
+
 ## Step 4: finish
 
 When the list is done, output:
@@ -132,12 +153,40 @@ When the list is done, output:
 - the net line change: `git diff --stat "$BASE..."`
 - anything you were unsure about, max three lines
 
-If any comments were collected, print the exact text that would be posted, in
-full, as message text, then offer to post it with `AskUserQuestion` (options
-**Post** and **Don't post**), then use `gh pr comment`. Do not post without
-being told. A draft that only exists in a file or a tool call has not been
-shown: they cannot approve what they have not read. Every time the draft
-changes, print it again before asking again.
+Then gather the notes for the author. The reviewer may have left their own in
+the code pane besides the ones you saved:
+
+```
+prboom comments --json
+```
+
+Each has `path`, `line`, `side` (`RIGHT`, or `LEFT` for a deleted line),
+`body`, `code` (the line as it read) and `by` (`you` is the reviewer, `agent`
+is you). Keep the reviewer's words as they wrote them.
+
+If there are any, print the exact review that would be posted, in full, as
+message text: each note under its `path:line`, then the summary body if there
+is one. Then offer to post it with `AskUserQuestion` (options **Post** and
+**Don't post**). Do not post without being told. A draft that only exists in a
+file or a tool call has not been shown: they cannot approve what they have not
+read. Every time the draft changes, print it again before asking again.
+
+Post it as one review with each note on its line, not as a single PR comment:
+
+```
+head=$(gh pr view <N> --json headRefOid -q .headRefOid)
+prboom comments --json | jq --arg head "$head" --arg body "<summary, or empty>" '{
+  commit_id: $head, event: "COMMENT", body: $body,
+  comments: map({path, line, side, body})
+}' | gh api "repos/{owner}/{repo}/pulls/<N>/reviews" --input -
+```
+
+GitHub only takes a line comment on a line inside the PR's diff. If it answers
+422, move the notes it refused into the review body as `` `path:line` note ``
+and post again. A note on a file you have since edited may point at a shifted
+line: compare `code` with `git show HEAD:<path>` and correct `line` first.
+
+After it posts, `prboom comments --clear`.
 
 ## What counts as a finding
 

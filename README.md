@@ -50,9 +50,9 @@ worktree.
 
 ## The walkthrough
 
-Enter gives you two panes: the agent on the left, a Shell pane on the right. The
-agent loads the `pr-walk` skill and, for each finding, puts the code in the right
-pane *before* saying anything about it, then says four things:
+Enter gives you two panes: the agent on the left, the code pane on the right.
+The agent loads the `pr-walk` skill and, for each finding, puts the code in the
+right pane *before* saying anything about it, then says four things:
 
 ```
 `app/models/offer.rb:120-140`
@@ -69,11 +69,44 @@ bigger change than it proposed gets made.
 Nothing pages, so your keyboard stays with the agent and a decision never costs
 a pane switch.
 
+## The code pane
+
+The right pane is `prboom view`. The agent points it at a line with `pr-show`,
+and it shows the file with the PR's changes in place, the cursor on that line,
+and which finding this is. Click into it, or `ctrl-b →`, when you want more
+than the agent showed:
+
+| Key | Does |
+|---|---|
+| `j` `k` `^d` `^u` `g` `G`, wheel, click | move, scroll, put the cursor on a line |
+| `tab` | around the line · just the diff · the whole file |
+| `/` `n` `N` `esc` | search, next, previous, clear |
+| `f` | open any file the PR changes |
+| `[` `]` | previous or next finding |
+| `.` | back to what the agent showed |
+| `c` | a note for the author on this line; again to edit, empty to remove |
+| `a` | ask the agent about this line: pasted into its pane with the line quoted |
+| `r` | reload |
+| `q` | quit; the pane becomes a shell |
+
+Nothing here moves the walk. You still answer the agent in its own pane.
+
+Your notes and the ones the agent saves on `comment` go in one list, and at the
+end the agent posts them as a single GitHub review, each note on its line, once
+you have read the draft and said post.
+
+It shows fixes made during the walk without a commit, and reloads the file on
+screen when it changes. Everything it knows is in the worktree's git dir under
+`prboom/`, so a pane restarted mid-walk picks up where it was, and removing the
+worktree removes it.
+
 ## Two ways in, same shape
 
 `⏎` runs `pr-open`, which needs **only git and tmux**. `t` runs `pr-task`, which
 builds the same two panes through TaskYou and puts a card on the board. The skill
-works under either because it just looks for a pane titled `Shell`.
+works under either: `pr-show` looks for the pane titled `Shell`, and if it is
+sitting at a prompt, turns it into the code pane. A pane busy running something
+is left alone.
 
 ## Pieces
 
@@ -82,7 +115,10 @@ works under either because it just looks for a pane titled `Shell`.
 | `prboom` | the picker |
 | `pr-open N` | worktree + tmux window + agent, no other dependencies |
 | `pr-task N` | the same via TaskYou, tracked on the board |
-| `pr-show FILE:LINE [CTX]` | renders one piece of code, never pages |
+| `pr-show FILE:LINE [CTX]` | points the code pane at a line (`prboom show`) |
+| `prboom view` | the code pane |
+| `prboom findings < list` | the walk's findings, one `FILE:LINE title` per line |
+| `prboom comment FILE:LINE TEXT` | a note for the author; `prboom comments [--json\|--clear]` |
 | `pr-pane CMD...` | runs a command in the window's Shell pane |
 | `pr-close N` | close one: session, worktree, branch |
 | `pr-close --stale` | close every PR that has since merged or closed |
@@ -90,11 +126,9 @@ works under either because it just looks for a pane titled `Shell`.
 | `prdiff [BASE] [FILE]` | the whole PR diff, standalone |
 | `skills/pr-walk` | what the agent follows |
 
-`pr-show` renders by what is useful rather than what is technically a diff: the
-hunks near your line for a changed file, syntax-highlighted source for a file the
-PR adds, source centred on the line for one it doesn't touch. Delta's stock
-styles are replaced with a dark tint so a diff reads as code rather than a block
-of green; override with `PR_DELTA_OPTS`.
+The code pane tints changed lines rather than filling them with colour, so a
+diff reads as code; a file the PR adds is shown as plain source, since every line
+of it is new.
 
 ## Install
 
@@ -165,7 +199,6 @@ Nothing here needs editing to fit your setup. Two conventions cover it.
 | `PR_AGENT` | the coding agent | `claude` |
 | `PR_SKILL` | slash command, for agents that have one | `/pr-walk` |
 | `PR_SKILL_FILE` | the skill as a file, for agents that don't | in this repo |
-| `PR_DELTA_OPTS` | extra flags for delta | none |
 
 **`~/.config/prboom/rules.md`** is prose the skill reads before it starts, and
 it wins wherever it disagrees with the skill. This is where your test command,
@@ -177,6 +210,7 @@ Neither file has to exist.
 
 ## Needs
 
-`git` and `tmux`. `gh` authenticated, and `jq`. `delta` and `bat` if you want
-syntax highlighting; without them it falls back to `git diff --color` and `nl`.
+`git` and `tmux`. `gh` authenticated, and `jq`. `delta` for the picker's diff
+tab and `prdiff`; without it the picker falls back to plain colour. The code
+pane highlights by itself.
 `ty` only for the `t` path.
